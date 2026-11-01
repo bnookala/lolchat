@@ -52,6 +52,7 @@ Environment (all optional):
 | `AUTOCHAT_NO_NOTIFY`, `AUTOCHAT_NO_FOCUS` | disable desktop notifications / focusing the Copilot terminal |
 | `AUTOCHAT_COUNTDOWN_MS` | exit countdown length in ms, overriding `countdownSeconds` (tests) |
 | `AUTOCHAT_AGENT_RESUME_MS` | how long a disconnected agent can resume before it has left (default 10000; tests) |
+| `AUTOCHAT_AGENT_PATHS_MS` | how often `autochat mcp` checks an agent's live git paths while connected (default 15000; `0` turns them off; see [overlap.md](agent-room/overlap.md#live-paths-paths)) |
 | `AUTOCHAT_PROCESS_SCAN_MS` | how often the daemon scans for running agents (default 15000; see [`detected`](#detected)) |
 | `AUTOCHAT_PROCESS_LIST` | a JSON file to read as the process table instead of running `ps` (tests) |
 

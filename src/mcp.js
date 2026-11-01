@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { envVar } from './env.js'
-import { INSTRUCTIONS, TOOLS, bindSession, DaemonLink, Tools } from './agent-client.js'
+import { INSTRUCTIONS, TOOLS, bindSession, DaemonLink, Tools, syncLivePaths } from './agent-client.js'
 
 // `autochat mcp`: a stdio MCP server, one per agent session, started by the harness. It's a
 // thin client of the daemon's agent protocol (docs/protocol.md, "Agent room (local)") over
@@ -149,7 +149,9 @@ export async function runMcp ({ harness = null, stdin = process.stdin, stdout = 
   const session = bindSession({ harness, env })
   log(`${session.harness}${session.harnessPid ? ' pid ' + session.harnessPid : ''} in ${session.cwd} (${session.hello.repo || 'no repo'})`)
   const link = new DaemonLink({ hello: session.hello, env, log })
-  const tools = new Tools({ link, session })
+  // While connected, the files changed in git go to the card as live paths (#56).
+  const live = syncLivePaths({ link, top: session.top, env, log })
+  const tools = new Tools({ link, session, onCall: live.poke })
   const server = new McpServer({ tools, log, write: (obj) => stdout.write(JSON.stringify(obj) + '\n') })
   let joinTimer = null
   const joinSoon = () => {

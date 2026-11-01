@@ -228,6 +228,8 @@ test('two autochat mcp processes coordinate through the daemon: overlap → ques
     AUTOCHAT_NO_NOTIFY: '1',
     AUTOCHAT_NO_FOCUS: '1',
     AUTOCHAT_AGENT_RESUME_MS: '400',
+    // Live paths off: here the overlap comes from status (the live-paths test below has them on).
+    AUTOCHAT_AGENT_PATHS_MS: '0',
     GIT_CONFIG_GLOBAL: path.join(tmp, 'gitconfig'),
     GIT_CONFIG_NOSYSTEM: '1'
   }
@@ -465,4 +467,72 @@ test('autochat mcp says bye when its harness closes it (stdin EOF, SIGTERM, SIGI
   }
   assert.doesNotMatch(daemonErr, /agent copilot-\w+ \(copilot\) away/, 'never away first')
   assert.match(daemonErr, /agent copilot-sigint \(copilot\) left/)
+})
+
+// Live paths (#56): two clones of one GitHub repo, and no `status` at all.
+test('live paths: two autochat mcp processes overlap from git alone, without a status, and the overlap clears with the edit', { timeout: 60000 }, async (t) => {
+  const clone = (name) => {
+    const dir = path.join(tmp, 'live', name)
+    fs.mkdirSync(path.join(dir, 'src'), { recursive: true })
+    fs.writeFileSync(path.join(dir, 'src', 'greeting.js'), "export const greet = (n) => 'hi ' + n\n")
+    sh(dir, 'init', '-q')
+    sh(dir, 'add', '-A')
+    sh(dir, 'commit', '-q', '-m', 'init')
+    sh(dir, 'remote', 'add', 'origin', 'https://github.com/example/greeting.git')
+    return dir
+  }
+  fs.writeFileSync(path.join(tmp, 'gitconfig'), '')
+  const one = clone('one')
+  const two = clone('two')
+  fs.appendFileSync(path.join(one, 'src', 'greeting.js'), 'export const shout = (n) => greet(n).toUpperCase()\n')
+  const home = path.join(tmp, 'dl')
+  fs.mkdirSync(home, { recursive: true })
+  const env = {
+    ...process.env,
+    AUTOCHAT_HOME: home,
+    COPILOT_HOME: path.join(tmp, 'copilot'),
+    AUTOCHAT_APP_DIRS: path.join(tmp, 'no-apps'),
+    AUTOCHAT_NO_NOTIFY: '1',
+    AUTOCHAT_NO_FOCUS: '1',
+    AUTOCHAT_AGENT_PATHS_MS: '200',
+    GIT_CONFIG_GLOBAL: path.join(tmp, 'gitconfig'),
+    GIT_CONFIG_NOSYSTEM: '1'
+  }
+  process.env.AUTOCHAT_HOME = home
+  const daemon = spawn(process.execPath, [BIN, 'daemon'], { env, stdio: ['ignore', 'ignore', 'ignore'] })
+  t.after(() => daemon.kill('SIGKILL'))
+  let pong = null
+  for (let i = 0; i < 100 && !pong; i++) {
+    pong = await send({ type: 'ping' }, 300)
+    if (!pong) await sleep(100)
+  }
+  assert.equal(pong?.agentRoom, true)
+  const A = mcpProcess(one, 'copilot', env)
+  const B = mcpProcess(two, 'claude', env)
+  t.after(() => { A.child.kill('SIGKILL'); B.child.kill('SIGKILL') })
+  for (const X of [A, B]) await X.request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'live', version: '1' } })
+  const until = async (fn, label) => {
+    for (let i = 0; i < 100; i++) { if (await fn()) return; await sleep(100) }
+    assert.fail('timed out waiting for ' + label)
+  }
+
+  // A joins with its uncommitted edit: its card has it as live paths, with no status.
+  await until(async () => (await A.tool('catch_up')).you.focus.live.length, "A's live paths")
+  const b0 = await B.tool('catch_up')
+  assert.deepEqual(b0.board.map(c => [c.name, c.state, c.focus.paths, c.focus.live]), [['copilot-greeting', 'idle', [], ['src/greeting.js']]])
+  assert.deepEqual(b0.you.overlaps, [])
+
+  // B edits the same file: its next check sends it, and both get the overlap notice.
+  fs.appendFileSync(path.join(two, 'src', 'greeting.js'), "export const hola = (n) => 'hola ' + n\n")
+  const text = 'claude-greeting and copilot-greeting both touch src/greeting.js'
+  const got = await A.tool('wait', { timeoutSec: 10 })
+  assert.deepEqual(got.messages.map(m => [m.kind, m.text]), [['overlap', text]])
+  assert.deepEqual((await B.tool('read')).messages.map(m => [m.kind, m.text]), [['overlap', text]])
+  const a1 = await A.tool('catch_up')
+  assert.deepEqual([a1.you.state, a1.you.focus.paths, a1.you.overlaps], ['idle', [], ['claude-greeting']])
+
+  // B undoes its edit: the overlap clears.
+  sh(two, 'checkout', '--', 'src/greeting.js')
+  await until(async () => !(await A.tool('catch_up')).you.overlaps.length, 'the overlap to clear')
+  assert.deepEqual((await B.tool('catch_up')).you.focus.live, [])
 })

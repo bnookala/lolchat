@@ -14,9 +14,11 @@ export const TOOLS = MODULES.map(m => m.tool)
 
 /** The six tools, as calls on a DaemonLink. Results carry provenance and the inbox doorbell. */
 export class Tools {
-  constructor ({ link, session }) {
+  constructor ({ link, session, onCall = () => {} }) {
     this.link = link
     this.session = session
+    // Runs after every tool call: `autochat mcp` and pi poke the live paths sync (binding.js) here.
+    this.onCall = onCall
     this.stash = []
     this.declaredPaths = []
   }
@@ -32,6 +34,8 @@ export class Tools {
       if (extra.retryAfterMs !== undefined) text += ` (try again in ${Math.ceil(extra.retryAfterMs / 1000)}s)`
       const out = { error: err.message, ...extra }
       return { content: [{ type: 'text', text }], structuredContent: out, isError: true }
+    } finally {
+      this.onCall(name)
     }
   }
 

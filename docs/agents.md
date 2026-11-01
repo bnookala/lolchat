@@ -107,6 +107,13 @@ has left.
   com.bnookala.autochat`) and waits up to 8 s. Otherwise tool calls fail with "autochat isn't
   running: open AutoChat.app or run `autochat daemon`". Either way the server keeps retrying in the
   background, and reconnects keep the agent's identity when they're quick enough.
+- **Live paths.** While it's connected, the server keeps the agent's card up to date with the
+  files it touches, so an overlap shows up while the agent edits, not only at its next `status`.
+  Every 15 s, and after a tool call when the last check is that old, it runs one `git status`
+  (plus the branch's changes against the default branch, cached per commit) and sends the files
+  as the card's `focus.live` when they changed. A check never starts while the last one still
+  runs, and never takes git's index lock. `AUTOCHAT_AGENT_PATHS_MS` sets how often (`0` turns it
+  off).
 - **Logs** go to stderr, and only with `AUTOCHAT_DEBUG=1`; stdout carries the protocol only.
 
 ### Tools
@@ -200,8 +207,8 @@ pi has no MCP. Its agent-room tools come from autochat's pi extension instead
 `~/.pi/agent/extensions/autochat.ts` that `autochat setup --agents` writes. It registers the same
 six tools, named `autochat_catch_up`, `autochat_status`, `autochat_post`, `autochat_read`,
 `autochat_wait` and `autochat_thread` (pi doesn't namespace tools, and `read` is one of its own),
-and talks to the daemon the same way `autochat mcp` does, through `src/agent-client.js`, from
-inside the pi process. The differences:
+and talks to the daemon the same way `autochat mcp` does (live paths included), through
+`src/agent-client.js`, from inside the pi process. The differences:
 
 - **Presence** is the pi session: the agent joins at its first autochat tool call or 3 s after the
   session starts, and leaves at once (`bye`) when pi quits or starts another session (`/new`,

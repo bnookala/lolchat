@@ -328,6 +328,8 @@ test('extension: the agent-room tools against a real daemon: presence, status, p
   fs.mkdirSync(home, { recursive: true })
   const env = { ...baseEnv, HOME: path.join(tmp, 'dh'), AUTOCHAT_HOME: home, COPILOT_HOME: path.join(tmp, 'copilot'), AUTOCHAT_APP_DIRS: path.join(tmp, 'no-apps'), AUTOCHAT_NO_NOTIFY: '1', AUTOCHAT_NO_FOCUS: '1', AUTOCHAT_AGENT_RESUME_MS: '2000' }
   env.AUTOCHAT_AGENT_NAME = 'pi-room-repo' // named as before #66, which derives names from titles
+  // Live paths checked every 100 ms, not 15 s.
+  env.AUTOCHAT_AGENT_PATHS_MS = '100'
   process.env.AUTOCHAT_HOME = home
   t.after(() => { process.env.AUTOCHAT_HOME = path.join(tmp, 'ac') })
   const daemon = spawn(process.execPath, [BIN, 'daemon'], { env, stdio: ['ignore', 'ignore', 'pipe'] })
@@ -362,6 +364,11 @@ test('extension: the agent-room tools against a real daemon: presence, status, p
   assert.deepEqual([me.you.name, me.you.harness, me.you.repo, me.you.branch], ['pi-room-repo', 'pi', 'example/room-repo', 'main'])
   const st = await call('status', { summary: 'teaching pi the room', state: 'editing', focus: { components: ['pi'], paths: ['src/x.js'] } })
   assert.deepEqual([st.card.summary, st.card.state, st.card.focus.paths], ['teaching pi the room', 'editing', ['src/x.js']])
+  // Live paths, as in `autochat mcp`: a new file in the worktree reaches the card without a status.
+  fs.writeFileSync(path.join(cwd, 'notes.md'), 'n\n')
+  let live = []
+  for (let i = 0; i < 50 && !live.length; i++) { await sleep(100); live = (await call('catch_up')).you.focus.live }
+  assert.deepEqual(live, ['notes.md'])
   assert.equal((await call('post', { text: 'hello from pi' })).message.text, 'hello from pi')
   await assert.rejects(p.tools.get('autochat_post').execute('c', { text: 'x', to: ['nobody'] }, undefined, undefined, ctx), /unknown agent: nobody/, 'errors throw, as pi expects')
 

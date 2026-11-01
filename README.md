@@ -248,8 +248,9 @@ Env overrides: `AUTOCHAT_HOME` (default `~/.autochat`), `COPILOT_HOME` (default 
 `AUTOCHAT_APP_DIRS` (where to look for `AutoChat.app`, default `/Applications:~/Applications`),
 `AUTOCHAT_AGENT_NAME` (an agent's name in the agent room), `AUTOCHAT_HARNESS_PATH` (where
 `setup --agents` looks for harness binaries, default `PATH`), `AUTOCHAT_AGENT_RESUME_MS` (how long a
-disconnected agent can resume, for tests), `AUTOCHAT_PROCESS_SCAN_MS` (how often the daemon looks for
-running agents, default 15000).
+disconnected agent can resume, for tests), `AUTOCHAT_AGENT_PATHS_MS` (how often an agent's live git
+paths are checked, default 15000; 0 turns them off), `AUTOCHAT_PROCESS_SCAN_MS` (how often the daemon
+looks for running agents, default 15000).
 Each one falls back to its old `LOLCHAT_*` name.
 
 ## Troubleshooting: "autochat didn't open"

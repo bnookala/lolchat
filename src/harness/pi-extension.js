@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import { spawn } from 'node:child_process'
 import { envVar } from '../env.js'
-import { TOOLS, instructions, agentHello, gitInfo, DaemonLink, Tools } from '../agent-client.js'
+import { TOOLS, instructions, agentHello, gitInfo, DaemonLink, Tools, syncLivePaths } from '../agent-client.js'
 import { titleLine } from '../agent-client/binding.js'
 
 // The autochat extension for pi (#35). pi has no hooks and no MCP, so the stub that autochat
@@ -183,6 +183,7 @@ const sessionName = (ctx) => {
 function agentRoom (pi, { env, log, joinDelayMs = JOIN_DELAY_MS }) {
   let link = null
   let tools = null
+  let live = null
   let joinTimer = null
   let lastCtx = null
   // One agent per pi session: who it is, from the first session event or tool call.
@@ -199,7 +200,9 @@ function agentRoom (pi, { env, log, joinDelayMs = JOIN_DELAY_MS }) {
       link.token = resumeTokens().get(sessionId) ?? null
       link.on('connected', () => resumeTokens().set(sessionId, link.token))
     }
-    tools = new Tools({ link, session: { harness: 'pi', cwd, top: git.top, readTitle: () => sessionName(lastCtx) } })
+    // As in `autochat mcp`: the files changed in git go to the card as live paths (#56).
+    live = syncLivePaths({ link, top: git.top, env, log })
+    tools = new Tools({ link, session: { harness: 'pi', cwd, top: git.top, readTitle: () => sessionName(lastCtx) }, onCall: live.poke })
   }
   pi.on('session_start', (e, ctx) => {
     try {
@@ -213,6 +216,7 @@ function agentRoom (pi, { env, log, joinDelayMs = JOIN_DELAY_MS }) {
   // same agent, so it only closes the connection.
   pi.on('session_shutdown', async (e) => {
     clearTimeout(joinTimer)
+    live?.stop()
     if (e?.reason === 'reload') link?.close()
     else await link?.bye()
   })
