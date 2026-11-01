@@ -58,6 +58,7 @@ function client () {
 
 const isState = (pred = () => true) => (m) => m.type === 'state' && pred(m)
 const isReply = (id) => (m) => m.type === 'reply' && m.id === id
+const counts = ({ present, openThreads, active }) => ({ present, openThreads, active })
 
 test('subscribers get snapshots, coalesced updates, and command replies; one-shots are unchanged', async (t) => {
   let n = 0
@@ -172,14 +173,14 @@ test('autochat daemon: headless, driven by hooks and subscribers, clean SIGTERM'
   assert.deepEqual([first.request, first.countdown, first.banner], [null, null, null])
   assert.deepEqual(first.sessions, [])
 
-  // The daemon hosts the agent room; the lounge snapshot summarizes it once an agent connects.
+  // The daemon hosts the agent room; the lounge snapshot summarizes it, even before an agent connects.
   assert.equal(pong.agentRoom, true)
-  assert.equal(first.agents, null, 'null until an agent connects')
+  assert.deepEqual(counts(first.agents), { present: 0, openThreads: 0, active: 0 })
   const agent = client()
   agent.send({ type: 'agent-hello', v: 1, harness: 'copilot', name: null, pid: process.pid, cwd: '/w/x', repo: 'owner/x', resume: null })
   const welcome = await agent.next((m) => m.type === 'agent-welcome', 10000, 'agent welcome')
   assert.equal(welcome.agent.human, first.me.handle)
-  assert.deepEqual((await a.next(isState(s => s.agents?.present === 1), 10000, 'agents summary')).agents, { present: 1, openThreads: 0 })
+  assert.deepEqual(counts((await a.next(isState(s => s.agents?.present === 1), 10000, 'agents summary')).agents), { present: 1, openThreads: 0, active: 1 })
   agent.send({ type: 'cmd', id: 1, cmd: 'thread', action: 'open', title: 'naming' })
   assert.equal((await agent.next(isReply(1))).ok, true)
   await a.next(isState(s => s.agents?.openThreads === 1), 10000, 'open thread in the summary')

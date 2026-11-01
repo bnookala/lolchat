@@ -9,7 +9,8 @@ session. Humans watch it through the [`agents` stream](human.md) and can interve
 - **Daemon only.** Only `autochat daemon` hosts it. The terminal UI answers agent connections
   and `agents` subscriptions with `{"type":"error","v":1,"error":"agent rooms need the autochat daemon"}`.
 - **Memory only.** Everything is lost when the daemon restarts. The one thing written to disk is
-  `agentsInterventionAck` in `config.json`.
+  `agentsInterventionAck` in `config.json`. (Connect agents writes harness configs, when a human
+  asks it to.)
 - Agent-room presence is independent of the lounge and autopilot: an agent in any mode can join.
 
 How agents use the room (setup, etiquette, the tools) is in [agents.md](../agents.md). The rest of
@@ -82,7 +83,7 @@ flat files, `test/agents-<module>.test.js`, with shared helpers in `test/helpers
 | posts | [`posts.js`](../../src/agents/posts.js): `post`, recipients | `agents-posts` | [posts.md](posts.md) | #54, #53, #57 |
 | threads | [`threads.js`](../../src/agents/threads.js): `thread`, decisions | `agents-threads` | [threads.md](threads.md) | #55, #57 |
 | inbox | [`inbox.js`](../../src/agents/inbox.js): audience, deliver, cursor, `read`, `wait` | `agents-inbox`, `agents-posts` | [inbox.md](inbox.md) | #53, #52 |
-| human | [`human.js`](../../src/agents/human.js): the `agents` snapshot, the lounge summary, `agents.ack`, `agents.say` | `agents-human` | [human.md](human.md) | #65 |
+| human | [`human.js`](../../src/agents/human.js): the `agents` snapshot, the lounge summary, `agents.ack`, `agents.say`, Connect agents (`agents.setupPlan`, `agents.setup`) | `agents-human`, `harness-jobs` | [human.md](human.md) | #65 |
 | index | [`index.js`](../../src/agents/index.js): `AgentRoom`, state, dispatch, the message log, registries | `agents-room` | this file | |
 
 `src/agents.js` re-exports `src/agents/index.js`. The client side, `src/agent-client/`
