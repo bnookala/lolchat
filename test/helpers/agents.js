@@ -83,10 +83,11 @@ export async function agent (hello = {}) {
   return c
 }
 
-// A daemon-like host: the agent room on the socket, as `autochat daemon` wires it.
-export async function start (t, opts = {}) {
+// A daemon-like host: the agent room on the socket, as `autochat daemon` wires it, doorbell
+// included (`parentPid` stands in for the process table).
+export async function start (t, { parentPid = null, ...opts } = {}) {
   const room = new AgentRoom({ human: 'stormy-newt-59', ...opts })
-  const server = await serve(() => ({}), {
+  const server = await serve((m) => m?.type === 'doorbell' ? room.doorbell(m, { parentPid }) : {}, {
     state: () => ({ type: 'state', v: 1 }),
     command: () => {},
     agents: { connect: (h, p) => room.connect(h, p), state: () => room.snapshot(), command: (m) => room.command(m) }

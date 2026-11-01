@@ -47,7 +47,7 @@ if (cmd === 'mcp') {
 }
 
 const { loadIdentity, ephemeralIdentity } = await import('../src/identity.js')
-const { loadConfig, saveConfig, FOCUS_MODES } = await import('../src/config.js')
+const { loadConfig, saveConfig, FOCUS_MODES, DOORBELL_MODES } = await import('../src/config.js')
 const { parseRoom, generatePrivateCode, DEFAULT_ROOM } = await import('../src/protocol.js')
 const { envVar } = await import('../src/env.js')
 
@@ -101,7 +101,9 @@ const HELP = `autochat: ephemeral, serverless chat rooms for people whose Copilo
   autochat config [k] [v]     show/set config (launch: auto|app|tmux|ghostty|iterm|terminal|notify|off,
                               countdown: seconds in the room after autopilot ends, 0 = none,
                               focus: auto|never|always, focus your agent's terminal after the
-                              countdown; auto does only when a single agent was at work)
+                              countdown; auto does only when a single agent was at work;
+                              doorbell: on|off, tell agents in the agent room what's waiting
+                              for them, after their tool calls)
   autochat config trigger [harness] [mode,…|never|default]
                               which of a harness's modes put you in the lounge (copilot: autopilot)
   autochat doctor             check hooks + P2P connectivity
@@ -243,6 +245,7 @@ ${inviteText(room)}`)
         }
         if (k === 'countdownSeconds' && !(Number.isInteger(val) && val <= 3600)) throw new Error('usage: autochat config countdown <seconds> (0-3600, 0 = no countdown)')
         if (k === 'focus' && !FOCUS_MODES.includes(val)) throw new Error('usage: autochat config focus auto|never|always')
+        if (k === 'doorbell' && !DOORBELL_MODES.includes(val)) throw new Error('usage: autochat config doorbell on|off')
         console.log(JSON.stringify(saveConfig({ [k]: val }), null, 2))
       } else {
         const cfg = loadConfig()
@@ -362,9 +365,18 @@ async function startCore ({ auto = false, daemon = false }) {
   // never tracks a session, so it never puts you in the lounge.
   let scanner = null
   const detected = () => scanner ? scanner.snapshot() : null
+  // The agent room's doorbell (#52), unless `autochat config doorbell off` (read at most once a
+  // second: hooks ring on every tool call).
+  let bell = { at: 0, on: true }
+  const doorbellOn = () => {
+    if (Date.now() - bell.at > 1000) bell = { at: Date.now(), on: loadConfig().doorbell !== 'off' }
+    return bell.on
+  }
+  const { parentPid } = await import('../src/harness/util.js')
   let server
   try {
     server = await serve((msg) => {
+      if (msg?.type === 'doorbell' && agentRoom) return doorbellOn() ? agentRoom.doorbell(msg, { parentPid }) : { text: null }
       const reply = controller.handle(msg)
       if (msg?.type === 'ping') return { ...reply, agentRoom: !!agentRoom }
       if (msg?.type === 'status') return { ...reply, detected: detected() }
@@ -481,6 +493,7 @@ async function daemon () {
   }
   process.stderr.write(`autochat daemon ${process.pid} listening on ${sockPath()}\n`)
   core.agentRoom.on('presence', (event, card) => process.stderr.write(`autochat daemon: agent ${card.name} (${card.harness}) ${event}\n`))
+  core.agentRoom.on('doorbell', (card, text) => process.stderr.write(`autochat daemon: rang ${card.name} (${card.harness}): ${text}\n`))
   let exiting = false
   const exit = async (sig) => {
     if (exiting) return

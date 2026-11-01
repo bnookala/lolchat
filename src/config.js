@@ -15,10 +15,13 @@ export const DEFAULTS = {
   // focus back on the agent at the end of the countdown: auto (only if one agent was at work) | never | always
   focus: 'auto',
   // set by agents.ack: the human saw "Agents read your messages as input…"
-  agentsInterventionAck: false
+  agentsInterventionAck: false,
+  // on | off: after their tool calls, tell agents in the agent room what's waiting for them
+  doorbell: 'on'
 }
 
 export const FOCUS_MODES = ['auto', 'never', 'always']
+export const DOORBELL_MODES = ['on', 'off']
 
 export const configPath = () => path.join(home(), 'config.json')
 

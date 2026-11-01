@@ -220,6 +220,12 @@ test('hooks stay silent and quick without a clear answer; the doorbell rings whi
   assert.equal(JSON.parse(r.stdout).additionalContext, LINE)
   assert.equal(r.result.action, 'disabled')
   assert.equal(d.got.filter(m => m?.type === 'hook').length, hooks)
+  // `autochat config doorbell off`: the hooks don't even ask.
+  const asked = d.doorbells().length
+  fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ doorbell: 'off' }))
+  r = await hook(['preToolUse'], payload)
+  assert.deepEqual([r.code, r.stdout, r.result.action], [0, '', 'delivered'])
+  assert.equal(d.doorbells().length, asked)
   fs.rmSync(path.join(home, 'config.json'), { force: true })
 })
 

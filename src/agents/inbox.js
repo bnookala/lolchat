@@ -1,7 +1,22 @@
 import { AgentError, fail, int, isStr, label, opt } from './limits.js'
+import { normalizeName } from './names.js'
+import { sanitize } from '../text.js'
 
 // The inbox: who gets a message (its audience), the doorbell, delivering (marking read), the
 // cursor, and the `read` and `wait` commands. See docs/agent-room/inbox.md.
+
+// The doorbell names the read tool as each harness shows it to its model.
+const READ_TOOL = { copilot: 'autochat-read', claude: 'mcp__autochat__read', codex: 'mcp__autochat__read', opencode: 'autochat_read', pi: 'autochat_read' }
+// What rings, most important first: anything else in the inbox (a human's message to everyone)
+// waits for the agent's next read.
+const RINGS = ['mention', 'reply', 'overlap', 'decision', 'thread']
+const MENTION_VERBS = {
+  question: ['asked you a question', 'asked you {n} questions'],
+  proposal: ['sent you a proposal', 'sent you {n} proposals'],
+  handoff: ['handed off to you', 'handed off to you {n} times']
+}
+const plural = ([one, many], n) => n === 1 ? one : many.replace('{n}', n)
+const quote = (s) => `“${sanitize(s || '', 60)}”`
 
 export const methods = {
   // A new message's audience (whose inbox it lands in) and which of them it mentions.
@@ -139,6 +154,104 @@ export const methods = {
       openThreads: [...this.threads.values()].filter(t => t.status === 'open' && t.participants.has(agent.id)).map(t => t.id),
       unanswered: unanswered.map(e => e.msg.seq)
     }
+  },
+
+  // --- the doorbell (#52) ---------------------------------------------------------------------
+
+  /**
+   * The one-shot `doorbell` message from a harness hook, plugin or extension, after one of its
+   * agent's tool calls: `{text}`, the line the harness puts in front of its model, or
+   * `{text: null}`. `parentPid(pid)`, when given, resolves to a process's parent: then the
+   * answer may be a promise (see hello.js's _sessionAgent).
+   */
+  doorbell (msg, { parentPid = null } = {}) {
+    if (!this.agents.size || !msg || typeof msg !== 'object') return { text: null }
+    const who = {
+      harness: isStr(msg.harness) ? normalizeName(msg.harness).slice(0, 20) || null : null,
+      sessionId: isStr(msg.sessionId) && /^[A-Za-z0-9_-]{1,128}$/.test(msg.sessionId) ? msg.sessionId : null,
+      pid: int(msg.pid) && msg.pid > 1 ? msg.pid : null
+    }
+    const found = this._sessionAgent(who, parentPid)
+    if (found && typeof found.then === 'function') return found.then((agent) => ({ text: this._ring(agent, who.harness) }))
+    return { text: this._ring(found, who.harness) }
+  },
+
+  // What's arrived for the agent since its last ring, as one line, or null: nothing new, rung
+  // in the last minute, or reading the room right now (a wait).
+  _ring (agent, harness) {
+    if (!agent || agent.left || agent.wait || this.closed) return null
+    const now = this.now()
+    if (agent.bell.at && now - agent.bell.at < this.limits.doorbellMs) return null
+    const items = []
+    for (const [seq, mention] of agent.unread) {
+      if (seq <= agent.bell.seq) continue
+      const entry = this.bySeq.get(seq)
+      const kind = entry && this._bellKind(agent, entry, mention)
+      if (kind) items.push({ entry, kind })
+    }
+    if (!items.length) return null
+    agent.bell = { seq: items.at(-1).entry.msg.seq, at: now }
+    const text = this._bellText(agent, items, harness || agent.harness)
+    this.emit('doorbell', this.card(agent), text)
+    return text
+  },
+
+  _bellKind (agent, entry, mention) {
+    const m = entry.msg
+    if (m.kind === 'overlap') return 'overlap'
+    if (m.kind === 'decision') return 'decision'
+    if (mention) return 'mention'
+    if (m.replyTo !== null && this.bySeq.get(m.replyTo)?.author === agent.id) return 'reply'
+    if (m.thread !== null && this.threads.get(m.thread)?.participants.has(agent.id)) return 'thread'
+    return null
+  },
+
+  // "autochat: copilot-x asked you a question; you overlap with claude-web on src/a.js. Read them
+  // with mcp__autochat__read before you go on." Who, what, and what to do: a real model brought
+  // up a line like that, and not a bare count.
+  _bellText (agent, items, harness) {
+    const who = (m) => m.from?.name || m.from?.display || 'someone'
+    const thread = (m) => this.threads.get(m.thread)
+    const parts = new Map()
+    const add = (key, n, text) => {
+      const p = parts.get(key)
+      if (p) p.n += n
+      else parts.set(key, { n, text })
+    }
+    const sorted = [...items].sort((a, b) => RINGS.indexOf(a.kind) - RINGS.indexOf(b.kind) || a.entry.msg.seq - b.entry.msg.seq)
+    for (const { entry: { msg: m }, kind } of sorted) {
+      if (kind === 'mention') {
+        const verbs = MENTION_VERBS[m.kind] || ['wrote to you', 'wrote to you {n} times']
+        add(`mention:${who(m)}:${verbs[0]}`, 1, (n) => `${who(m)} ${plural(verbs, n)}`)
+      } else if (kind === 'reply') {
+        add(`reply:${who(m)}`, 1, (n) => `${who(m)} ${plural(['replied to you', 'replied to you {n} times'], n)}`)
+      } else if (kind === 'overlap') {
+        const other = m.to.find(name => name !== agent.name) || 'another agent'
+        const on = m.text.includes(' both touch ') ? m.text.slice(m.text.indexOf(' both touch ') + 12) : ''
+        add(`overlap:${m.seq}`, 1, () => `you overlap with ${other}${on ? ` on ${sanitize(on, 100)}` : ''}`)
+      } else if (kind === 'decision') {
+        add(`decision:${m.seq}`, 1, () => thread(m) ? `${who(m)} decided ${quote(thread(m).title)}` : `${who(m)} posted a decision`)
+      } else {
+        add(`thread:${m.thread}`, 1, (n) => n === 1 ? `${who(m)} wrote in ${quote(thread(m)?.title)}` : `${n} new messages in ${quote(thread(m)?.title)}`)
+      }
+    }
+    const max = this.limits.doorbellText
+    const tool = READ_TOOL[harness] || 'autochat\'s read tool'
+    const end = `. Read ${items.length === 1 ? 'it' : 'them'} with ${tool} before you go on.`
+    let line = 'autochat: '
+    let left = items.length
+    let first = true
+    for (const { n, text } of parts.values()) {
+      const part = (first ? '' : '; ') + text(n)
+      const rest = left - n ? `; and ${left - n} more` : ''
+      if (line.length + part.length + rest.length + end.length > max) break
+      line += part
+      left -= n
+      first = false
+    }
+    if (first) line += `${items.length} new for you`
+    else if (left) line += `; and ${left} more`
+    return sanitize(line + end, max)
   }
 }
 
@@ -149,6 +262,10 @@ const isPending = (p) => p.unread > 0 || p.openThreads.length > 0 || p.unanswere
 export function register (r) {
   r.command('read', methods._read)
   r.command('wait', methods._wait)
+  // The doorbell's state: what the agent was last rung for (its newest seq), and when.
+  r.on('join', function (agent, { resumed }) {
+    if (!resumed || !agent.bell) agent.bell = { seq: this.seq, at: 0 }
+  })
   // A new message lands in its audience's inboxes, and wakes their waits.
   r.on('post', function (entry, { mentions }) {
     for (const id of entry.audience) this.agents.get(id).unread.set(entry.msg.seq, mentions.has(id))

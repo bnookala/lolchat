@@ -40,7 +40,10 @@ export const LIMITS = {
   knownComponents: 20,
   path: 300,
   paths: 200,
-  to: 16
+  to: 16,
+  // The doorbell (inbox.js): at most one ring per agent this often, of at most this many characters.
+  doorbellMs: 60 * 1000,
+  doorbellText: 500
 }
 
 // A command that fails on its arguments: the agent gets `ok:false` with the message (and any

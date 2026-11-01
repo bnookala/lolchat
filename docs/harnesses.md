@@ -190,10 +190,14 @@ the agent's context, wherever that harness lets a hook add context to a tool cal
   harness process when the hook knows it (Claude Code's `CLAUDE_PID`; opencode's plugin and pi's
   extension run inside the harness), else the process that ran the hook: the shell the harness
   runs hooks in, whose parent is the harness. The daemon finds the agent whose `agent-hello` has
-  that `sessionId`, else that `harnessPid` (each harness below says which one matches).
-- **The daemon decides** what's worth a ring and how often; `text` is `null` when there's
-  nothing to say. The hook passes the text on as one line of at most 500 characters, without
-  escape sequences, control characters or bidi overrides.
+  that `sessionId`, else that `harnessPid`, else the `harnessPid` of `pid`'s parent (each harness
+  below says which one matches; [hello.md](agent-room/hello.md#the-doorbells-index) has them all).
+- **The daemon decides** what's worth a ring and how often, and names the read tool as this
+  harness shows it ([the agent room's doorbell](agent-room/inbox.md#the-doorbell)); `text` is
+  `null` when there's nothing to say. The hook passes the text on as one line of at most 500
+  characters, without escape sequences, control characters or bidi overrides.
+- **Off switch.** `autochat config doorbell off`: hooks don't ask, and the daemon answers `null`
+  to opencode's plugin and pi's extension.
 - **Silent unless it's a clear answer.** No daemon, a daemon that doesn't know the message
   (`ok: false`), no text, an empty one, garbage, or no answer within 150 ms: the hook prints
   nothing and exits 0, as it always has.
@@ -217,7 +221,9 @@ the agent's context, wherever that harness lets a hook add context to a tool cal
 the model API that logs every request in full: first with a probe hook (or plugin, or extension)
 that returns a marker, then with autochat's own, installed by `autochat setup`, and
 `autochat mcp` as an MCP server, against a stand-in daemon that answers the doorbell. The line
-showing up in the next request to the model is what the model reads.
+showing up in the next request to the model is what the model reads. End to end, with a real
+`autochat daemon`: Codex, Claude Code and Copilot CLI each got the line on its next tool call after
+another agent (Claude Code or Codex) asked it a question during a long one, and read the room.
 
 **Installing.** No hook plan changes: each harness's doorbell event already runs for every tool
 call. The code that rings is in `autochat hook`, in opencode's plugin and in pi's extension
@@ -244,7 +250,9 @@ payload on stdin), against a stand-in daemon that answers at once:
 The doorbell's round trip overlaps the lounge's hook message, so it doesn't move the median;
 almost all of a hook's time is starting node. A daemon that never answers costs the 150 ms
 timeout, once per tool call. In-process, as opencode's plugin and pi's extension ring, the round
-trip takes 0.11 ms (median of 300; p90 0.18 ms).
+trip takes 0.11 ms (median of 300; p90 0.18 ms). A real daemon answers in about 0.05 ms
+(median, as fast as a `ping`), for a session in the room or not, or in about 2.5 ms the first time
+a session can only be found through the process table (Codex), which it then remembers.
 
 ## Adding an adapter
 
@@ -605,6 +613,9 @@ as Codex's MCP server.
   commands don't change, so the hooks you trusted stay trusted. It doesn't ring for autochat's own
   tools: Codex's hooks name them `mcp__autochat__catch_up` and so on (verified), while the model
   sees them as the `mcp__autochat` namespace's `catch_up`.
+- A shell command still running when Codex hands the result back (`exec_command` yields after
+  about 10 s) gets no `PostToolUse` then (verified); the documentation says a later `write_stdin`
+  poll delivers it when the command finishes, so that's when it rings.
 - **Which agent.** Codex starts its MCP servers with a filtered environment: no session id, so
   `autochat mcp`'s hello has none, and not even `AUTOCHAT_HOME` unless the server's `env_vars`
   lists it. The doorbell's `pid` is the shell Codex runs the hook in, and its parent is the Codex

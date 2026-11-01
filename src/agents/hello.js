@@ -101,6 +101,76 @@ export const methods = {
     let id
     do id = hex(4); while (this.agents.has(id))
     return id
+  },
+
+  // --- which agent a harness session is (the doorbell) -------------------------------------
+
+  // Keeps the session and harness-pid index in step with the agent's hello.
+  _indexHello (agent) {
+    this._unindexHello(agent)
+    const key = agent.sessionId ? `${agent.harness}:${agent.sessionId}` : null
+    if (key) this.helloSessions.set(key, agent.id)
+    if (agent.harnessPid) {
+      if (!this.helloPids.has(agent.harnessPid)) this.helloPids.set(agent.harnessPid, new Set())
+      this.helloPids.get(agent.harnessPid).add(agent.id)
+    }
+    agent.indexed = { key, pid: agent.harnessPid }
+    this.helloGen++
+  },
+
+  _unindexHello (agent) {
+    const was = agent.indexed
+    if (!was) return
+    if (was.key && this.helloSessions.get(was.key) === agent.id) this.helloSessions.delete(was.key)
+    const ids = this.helloPids.get(was.pid)
+    if (ids) { ids.delete(agent.id); if (!ids.size) this.helloPids.delete(was.pid) }
+    agent.indexed = null
+    this.helloGen++
+  },
+
+  // The live agent with this harnessPid; the one that joined last, when there are several (pi
+  // starts a new session in the same process).
+  _agentByPid (pid) {
+    let best = null
+    for (const id of this.helloPids.get(pid) || []) {
+      const a = this.agents.get(id)
+      if (a && !a.left && (!best || a.joinedAt >= best.joinedAt)) best = a
+    }
+    return best
+  },
+
+  /**
+   * The agent a harness session belongs to, or null: the one whose hello has this `sessionId`,
+   * else this `harnessPid`, else the harnessPid of `pid`'s parent (a hook runs in a shell under
+   * its harness): `parentPid(pid)` resolves to it, so the answer may be a promise. Remembered
+   * per session, so a session that isn't in the room costs one map lookup until agents come or
+   * go.
+   */
+  _sessionAgent ({ harness, sessionId, pid }, parentPid = null) {
+    const key = sessionId ? `${harness}:${sessionId}` : null
+    const hit = key && this.helloCache.get(key)
+    if (hit) {
+      const a = hit.id && this.agents.get(hit.id)
+      if (a && !a.left) return a
+      if (!hit.id && hit.gen === this.helloGen) return null
+      this.helloCache.delete(key)
+    }
+    const gen = this.helloGen
+    const remember = (a) => {
+      if (key && gen === this.helloGen) {
+        this.helloCache.delete(key)
+        this.helloCache.set(key, { id: a ? a.id : null, gen })
+        if (this.helloCache.size > 512) this.helloCache.delete(this.helloCache.keys().next().value)
+      }
+      return a
+    }
+    const id = key && this.helloSessions.get(key)
+    const known = (id && this.agents.get(id)) || (pid && this._agentByPid(pid))
+    if (known && !known.left) return remember(known)
+    if (!pid || !parentPid || !this.helloPids.size) return remember(null)
+    return Promise.resolve()
+      .then(() => parentPid(pid))
+      .then((ppid) => remember(int(ppid) && ppid > 1 ? this._agentByPid(ppid) : null), () => remember(null))
   }
 }
 
@@ -110,6 +180,17 @@ export function register (r) {
   // board.js: a first status makes the agent active. Registered here, before overlap.js, so its
   // "<name> joined" comes before that status's overlap notices.
   r.on('status', function (agent) { this._activate(agent) })
+  // For the doorbell: "<harness>:<sessionId>" and harnessPid → agent ids, from the hellos of the
+  // agents that haven't left; which agent each harness session that rang is (or null for none,
+  // while helloGen, the index's version, stays the same).
+  r.on('init', function () {
+    this.helloSessions = new Map()
+    this.helloPids = new Map()
+    this.helloCache = new Map()
+    this.helloGen = 0
+  })
+  r.on('join', function (agent) { this._indexHello(agent) })
+  r.on('leave', function (agent) { this._unindexHello(agent) })
   r.contribute('card', function ({ agent }) {
     return { harness: agent.harness, repo: agent.repo, branch: agent.branch, worktree: agent.worktree }
   })

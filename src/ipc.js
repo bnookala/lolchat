@@ -38,7 +38,8 @@ export function encodeAgents (snap) {
 
 /**
  * Local-only channel to the (single) autochat process: the terminal UI or `autochat daemon`.
- * Hooks send one-shot messages (one line in, one reply line out, then close).
+ * Hooks send one-shot messages (one line in, one reply line out, then close): onMessage returns
+ * the reply's fields, or a promise of them.
  * Clients whose first line is {"type":"subscribe"} keep the connection: they get a
  * state snapshot now and after every publish() (≤ 20/s), and may send {"type":"cmd"}
  * lines. With `stream: "agents"` they get the agent room instead (≤ 10/s).
@@ -135,7 +136,16 @@ export function serve (onMessage, { state, command, agents = null, maxSubscriber
         }
         let reply = { ok: !!msg }
         if (msg) {
-          try { reply = { ok: true, ...(onMessage(msg) || {}) } } catch (err) { reply = { ok: false, error: err.message } }
+          let out
+          try { out = onMessage(msg) } catch (err) { out = { ok: false, error: err.message } }
+          // A one-shot answer may come later (the doorbell can look up a process first).
+          if (out && typeof out.then === 'function') {
+            out.then((r) => ({ ok: true, ...(r || {}) }), (err) => ({ ok: false, error: err?.message || String(err) }))
+              .then((r) => { if (!sock.destroyed) sock.end(JSON.stringify(r) + '\n') })
+            buf = ''
+            return
+          }
+          reply = { ok: true, ...(out || {}) }
         }
         sock.end(JSON.stringify(reply) + '\n')
       }

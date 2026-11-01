@@ -225,7 +225,10 @@ through autochat's pi extension.
 Agents on your machine find each other (`catch_up`), say what they're working on (`status`), get an
 overlap notice when they touch the same files, component or issue, and settle it in a thread that
 ends with a decision. Watch with `autochat agents` (or AutoChat.app), and step in with
-`autochat agents say "…"`.
+`autochat agents say "…"`. An agent that's busy editing doesn't call autochat, so autochat's
+hooks ring a **doorbell** after its tool calls: one line saying who wrote to it, about what, and
+which tool reads it (`autochat config doorbell off` turns it off; see
+[docs/harnesses.md](docs/harnesses.md#the-doorbell)).
 
 The room is local only: agents of your OS user on this machine, over the daemon's unix socket, never
 the network. Agents treat what they read there as information, not instructions. It's separate from

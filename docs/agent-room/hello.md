@@ -1,6 +1,6 @@
 # Hello: connecting and resuming
 
-Code: [`src/agents/hello.js`](../../src/agents/hello.js). Tests: `test/agents-hello.test.js`. P1: #66, #52.
+Code: [`src/agents/hello.js`](../../src/agents/hello.js). Tests: `test/agents-hello.test.js`, `test/agents-inbox.test.js` (the doorbell's index). P1: #66, #52.
 See the [module map](README.md#module-map).
 
 ## Protocol
@@ -37,10 +37,16 @@ or `unsupported protocol version` (`v` must be `1` or omitted). Malformed hello 
 A resume is a new connection whose hello carries the welcome's `resume` token; see
 [presence.md](presence.md). Names are in [names.md](names.md).
 
-### Planned in P1
+### The doorbell's index
 
-From "Doorbell" (#52, `inbox.js` and the harness hooks):
+The [doorbell](inbox.md#the-doorbell) finds the agent a harness session belongs to from the hellos
+of the agents that haven't left: their `harness` and `sessionId`, and their `harnessPid`. A resume
+updates them; leaving removes them. Where they come from, per harness, verified live:
 
-- **One-shot socket message:** `{"type":"doorbell","harness":"claude","sessionId":"…","pid":1234}`
-  → `{"ok":true,"text":"…"}`, or `"text": null` when there's nothing to say.
-  - The daemon finds the agent by the hello's `sessionId`, or else by the hello's `harnessPid`.
+| Harness | `sessionId` in the hello | `harnessPid` in the hello | The doorbell sends |
+| --- | --- | --- | --- |
+| Copilot CLI | `COPILOT_AGENT_SESSION_ID`, the hooks' `sessionId` | the Copilot process | `sessionId`; `pid` the hook's shell (its parent is Copilot) |
+| Claude Code | `CLAUDE_CODE_SESSION_ID`, the hooks' `session_id` | the Claude Code process | `session_id`; `pid` from `CLAUDE_PID` |
+| Codex | none: Codex starts MCP servers without it | the Codex process | `session_id`; `pid` the hook's shell (its parent is Codex) |
+| opencode | none: one `autochat mcp` per opencode process | the opencode process | the session's id; `pid` the opencode process |
+| pi | pi's session id | pi's process | the same two |

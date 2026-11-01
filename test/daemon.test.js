@@ -345,3 +345,49 @@ test('autochat daemon: Connect agents sets up a harness, and the lounge shows it
   assert.equal(await exited, 0)
   await lounge.closed
 })
+
+test('autochat daemon: the doorbell rings its agents, finds a session by its process, and `autochat config doorbell off` silences it', { timeout: 60000 }, async (t) => {
+  const testnet = await createTestnet(3)
+  t.after(() => testnet.destroy())
+  const home = path.join(tmp, 'b')
+  fs.mkdirSync(home, { recursive: true })
+  fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ room: 'lc1-bell-' + Math.random().toString(36).slice(2, 12), announce: false }))
+  process.env.AUTOCHAT_HOME = home
+  const env = { ...process.env, AUTOCHAT_HOME: home, AUTOCHAT_BOOTSTRAP: testnet.bootstrap.map(b => `${b.host}:${b.port}`).join(','), AUTOCHAT_NO_NOTIFY: '1', AUTOCHAT_NO_FOCUS: '1' }
+  const daemon = spawn(process.execPath, [BIN, 'daemon'], { env, stdio: ['ignore', 'ignore', 'pipe'] })
+  let stderr = ''
+  daemon.stderr.on('data', (d) => { stderr += d })
+  t.after(() => daemon.kill('SIGKILL'))
+  for (let i = 0; i < 100 && !await send({ type: 'ping' }, 300); i++) await new Promise(resolve => setTimeout(resolve, 100))
+
+  const join = async (hello) => {
+    const c = client()
+    c.send({ type: 'agent-hello', v: 1, cwd: home, repo: 'owner/repo', ...hello })
+    await c.next(m => m.type === 'agent-welcome', 10000, 'welcome')
+    return c
+  }
+  // Claude Code: by its session id. Codex: by the parent of the process that rang (this test
+  // process plays Codex, and a child of it the hook's shell).
+  const claude = await join({ harness: 'claude', name: 'claude-a', sessionId: 's-claude', harnessPid: 999999 })
+  const codex = await join({ harness: 'codex', name: 'codex-c', sessionId: null, harnessPid: process.pid })
+  const copilot = await join({ harness: 'copilot', name: 'copilot-b', sessionId: 's-copilot' })
+  copilot.send({ type: 'cmd', id: 1, cmd: 'post', text: 'are you on src/greeting.js?', kind: 'question', to: ['claude-a', 'codex-c'] })
+  assert.equal((await copilot.next(isReply(1))).ok, true)
+
+  const cli = (...args) => assert.equal(spawnSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8' }).status, 0)
+  cli('config', 'doorbell', 'off')
+  assert.deepEqual(await send({ type: 'doorbell', harness: 'claude', sessionId: 's-claude', pid: 1 }), { ok: true, text: null }, 'off')
+  assert.equal(spawnSync(process.execPath, [BIN, 'config', 'doorbell', 'loud'], { env, encoding: 'utf8' }).status, 1)
+  cli('config', 'doorbell', 'on')
+  await new Promise(resolve => setTimeout(resolve, 1100))
+  assert.deepEqual(await send({ type: 'doorbell', harness: 'claude', sessionId: 's-claude', pid: 1 }), { ok: true, text: 'autochat: copilot-b asked you a question. Read it with mcp__autochat__read before you go on.' })
+
+  const shell = spawn('sleep', ['10'])
+  t.after(() => shell.kill())
+  const r = await send({ type: 'doorbell', harness: 'codex', sessionId: 'thr-1', pid: shell.pid }, 3000)
+  assert.deepEqual(r, { ok: true, text: 'autochat: copilot-b asked you a question. Read it with mcp__autochat__read before you go on.' })
+  assert.deepEqual(await send({ type: 'doorbell', harness: 'codex', sessionId: 'nobody', pid: 1 }), { ok: true, text: null })
+  assert.match(stderr, /rang claude-a \(claude\): autochat: copilot-b asked you a question/)
+  assert.match(stderr, /rang codex-c \(codex\): /)
+  for (const c of [claude, codex, copilot]) c.close()
+})

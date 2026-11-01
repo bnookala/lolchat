@@ -96,7 +96,7 @@ export async function runHook (event, { harness = 'copilot', env = process.env }
   const cfg = loadConfig()
   const a = adapter(harness)
   // The doorbell is the agent room's, so it rings while the lounge is paused (launch off) too.
-  const bell = ringsOn(a, event, payload)
+  const bell = cfg.doorbell !== 'off' && ringsOn(a, event, payload)
   if (cfg.launch === 'off' && !bell) return { action: 'disabled' }
   if (!a) return { action: 'unknown-harness' }
   const ev = sessionEvent(a, event, payload, { env, config: cfg })

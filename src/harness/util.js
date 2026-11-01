@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { spawnSync } from 'node:child_process'
+import { spawnSync, execFile } from 'node:child_process'
 import { BIN } from '../launcher.js'
 import { envVar } from '../env.js'
 
@@ -191,6 +191,22 @@ export function envPid (value) {
 
 export function pidAlive (pid) {
   try { process.kill(pid, 0); return true } catch (err) { return err.code === 'EPERM' }
+}
+
+/**
+ * A process's parent pid, or null when it's gone or unknown: /proc on Linux, `ps` (about 15 ms)
+ * elsewhere. Never rejects.
+ */
+export function parentPid (pid) {
+  return new Promise((resolve) => {
+    if (!Number.isSafeInteger(pid) || pid <= 1 || process.platform === 'win32') return resolve(null)
+    const ppid = (v) => { const n = Number(v); return Number.isSafeInteger(n) && n > 1 ? n : null }
+    if (process.platform === 'linux') {
+      // /proc/<pid>/stat: "pid (comm) state ppid …", and comm may hold spaces or parentheses.
+      return fs.readFile(`/proc/${pid}/stat`, 'utf8', (err, text) => resolve(err ? null : ppid(text.slice(text.lastIndexOf(')') + 2).split(' ')[1])))
+    }
+    execFile('ps', ['-o', 'ppid=', '-p', String(pid)], { encoding: 'utf8', timeout: 2000 }, (err, stdout) => resolve(err ? null : ppid(String(stdout).trim())))
+  })
 }
 
 /** Process start time in ms (via `ps -o etime`), or null if unknown. */
