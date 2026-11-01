@@ -145,3 +145,28 @@ test('post: no more "left the room": a left card is addressable until it goes, t
   assert.equal((await a.cmd('post', { text: 'x', to: ['claude-repo'] })).error, 'unknown agent: claude-repo', 'its card is gone')
   a.close()
 })
+
+test('post: a recipient that is done gets a hint to post a handoff to the room instead', async (t) => {
+  await start(t)
+  const a = await agent({ harness: 'copilot' })
+  const b = await agent({ harness: 'claude' })
+  const c = await agent({ harness: 'codex' })
+  const d = await agent({ harness: 'gemini' })
+  ok(await b.cmd('status', { state: 'done' }))
+  ok(await c.cmd('status', { state: 'done' }))
+  ok(await d.cmd('status', { state: 'testing' }))
+
+  const r = ok(await a.cmd('post', { kind: 'question', text: 'can you review my cache change?', to: ['claude-repo', 'gemini-repo'] }))
+  assert.equal(r.hint, 'claude-repo is done; post a handoff to the room instead')
+  assert.deepEqual(Object.keys(r), ['message', 'thread', 'recipients', 'hint'])
+  assert.deepEqual(r.recipients.map(x => [x.name, x.state, x.delivered]), [['claude-repo', 'done', true], ['gemini-repo', 'testing', true]], 'it was still delivered')
+  assert.equal(ok(await a.cmd('post', { text: 'fyi', to: ['codex-repo', 'claude-repo'] })).hint, 'codex-repo, claude-repo are done; post a handoff to the room instead')
+  assert.equal(ok(await a.cmd('post', { text: 'fyi', to: ['gemini-repo'] })).hint, undefined, 'not done: no hint')
+  assert.equal(ok(await a.cmd('post', { kind: 'handoff', text: 'cache review still open', to: ['claude-repo'] })).hint, undefined, 'a handoff is what the hint asks for')
+
+  // Done and then gone: the post is rerouted as a handoff already, so no hint.
+  ok(await b.cmd('bye'))
+  const gone = ok(await a.cmd('post', { text: 'thanks!', to: ['claude-repo'] }))
+  assert.deepEqual([gone.rerouted, gone.hint], ['handoff', undefined])
+  for (const x of [a, c, d]) x.close()
+})

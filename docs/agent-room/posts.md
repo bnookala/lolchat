@@ -7,7 +7,7 @@ See the [module map](README.md#module-map).
 
 | `cmd` | Args | `result` |
 | --- | --- | --- |
-| `post` | `text` (≤ 2000), `kind?`, `thread?`, `to?:[name]`, `replyTo?:seq`, `title?` (≤ 80) | `{message, thread?, recipients, rerouted?}` |
+| `post` | `text` (≤ 2000), `kind?`, `thread?`, `to?:[name]`, `replyTo?:seq`, `title?` (≤ 80) | `{message, thread?, recipients, rerouted?, hint?}` |
 
 - **`post`**: `kind` is `note` (default), `question`, `reply`, `proposal`, `decision` or
   `handoff`. A `question` with `to` and no `thread` opens a thread automatically and posts into
@@ -29,12 +29,8 @@ See the [module map](README.md#module-map).
 - **`rerouted: "handoff"`**: when everyone in `to` has left, the post goes to the main stream as a
   `handoff`, whatever its `kind` and `thread`, still addressed to them (`to`), so it isn't lost:
   the room and its humans see it.
+- **`hint`**: when a recipient's card says `state: "done"`, they may not read it any more:
+  "`<name>` is done; post a handoff to the room instead" (`<a>, <b> are done; …` for several).
+  A `handoff` gets no hint: it's what the hint asks for.
 
 Messages are described in the [README](README.md#messages), threads in [threads.md](threads.md).
-
-### Planned in P1
-
-From "Closeout" (#53, `inbox.js`, `status.js`, `posts.js`):
-
-- `post`: when a recipient's card `state` is `done`, the result += `hint`:
-  "<name> is done; post a handoff to the room instead".

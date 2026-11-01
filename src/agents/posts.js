@@ -57,6 +57,9 @@ export const methods = {
     const result = this._contribute('post', { agent, msg, entry, thread })
     result.recipients = recipients.map(a => this._recipient(a))
     if (rerouted) result.rerouted = 'handoff'
+    // The closeout (#53): an agent that's done may stop reading. A handoff is what the hint asks for.
+    const done = kind === 'handoff' ? [] : recipients.filter(a => a.state === 'done').map(a => a.name)
+    if (done.length) result.hint = `${done.join(', ')} ${done.length > 1 ? 'are' : 'is'} done; post a handoff to the room instead`
     return result
   },
 
