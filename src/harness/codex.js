@@ -591,9 +591,11 @@ function autonomy (payload, session) {
 
 // --- the doorbell -----------------------------------------------------------------------------------
 
-// From Codex's hooks documentation (not run live): hookSpecificOutput.additionalContext from a
-// PostToolUse hook is added to the model's context as developer context. Our PostToolUse hook
-// already runs for every tool. Codex runs hooks through a login shell, whose parent is Codex.
+// Verified against Codex 0.166.0: hookSpecificOutput.additionalContext from a PostToolUse hook
+// reaches the model as a developer message just before that tool's output. Our PostToolUse hook
+// already runs for every tool, MCP tools included (mcp__autochat__catch_up, …). Codex runs hooks
+// through the user's shell (`zsh -c`), whose parent is Codex; its MCP servers get no session id,
+// so the daemon finds the agent by the pid's parent.
 const ROOM_TOOL = new RegExp(`^mcp__${SERVER}__`)
 const doorbell = {
   event: 'PostToolUse',
