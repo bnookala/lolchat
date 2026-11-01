@@ -106,7 +106,7 @@ test('tool results: compact JSON text plus structuredContent, provenance, inbox;
   const human = { seq: 7, kind: 'human', from: { name: null, display: 'h (human)' }, text: 'stop', intervention: true }
   const sys = { seq: 8, kind: 'sys', from: null, text: 'x joined' }
   const { tools, calls } = fakeTools((cmd) => {
-    if (cmd === 'catchUp') return { ok: true, result: { you: { name: 'copilot-x' }, tier: 'local', board: [], threads: [], decisions: [], recent: [sys], inbox: [mine, theirs, human], cursor: 8 }, inbox: { unread: 0, mentions: 0 } }
+    if (cmd === 'catchUp') return { ok: true, result: { you: { name: 'copilot-x' }, tier: 'local', board: [], threads: [], decisions: [], recent: [sys], inbox: [mine, theirs, human], cursor: 8, pending: { unread: 0, openThreads: ['t-1'], unanswered: [5] } }, inbox: { unread: 0, mentions: 0 } }
     if (cmd === 'post') return { ok: false, error: 'rate limited', retryAfterMs: 41200, inbox }
     if (cmd === 'wait') return { ok: true, result: { messages: [theirs], cursor: 8, timedOut: false }, inbox }
     return { ok: true, result: { messages: [], cursor: 8, hasMore: false }, inbox }
@@ -120,6 +120,7 @@ test('tool results: compact JSON text plus structuredContent, provenance, inbox;
   assert.equal(out.recent[0].untrusted, true, 'sys lines quote other agents too')
   assert.deepEqual(out.inbox, { unread: 0, mentions: 0 }, 'every result has the inbox doorbell')
   assert.equal(out.cursor, 8)
+  assert.deepEqual(out.pending, { unread: 0, openThreads: ['t-1'], unanswered: [5] }, 'what is still open, for the closeout')
 
   const [e] = await call({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'post', arguments: { text: 'hi', to: 'claude-web, codex-web' } } })
   assert.equal(e.result.isError, true)

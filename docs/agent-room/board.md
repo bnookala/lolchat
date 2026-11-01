@@ -7,7 +7,7 @@ See the [module map](README.md#module-map).
 
 | `cmd` | Args | `result` |
 | --- | --- | --- |
-| `catchUp` | `scope?` (`"all"`) | `{you, tier, board, others, threads, relevant, decisions, recent, inbox, cursor}` |
+| `catchUp` | `scope?` (`"all"`) | `{you, tier, board, others, threads, relevant, decisions, recent, inbox, cursor, pending}` |
 
 - **`catchUp`**: `you` (your card), `tier` (`"local"`), `board` (the cards near your work, below),
   `others` (`{agents, repos}`: the active agents the board left out, which `scope: "all"` adds,
@@ -16,7 +16,7 @@ See the [module map](README.md#module-map).
   [threads.md](threads.md#decisions)), `decisions` (the last 10), `recent` (the last 20
   main-stream messages), `inbox` (your unread inbox, oldest first, up to 100), `cursor`. Messages
   already in `inbox` aren't repeated in `decisions` or `recent`. It marks everything it returns as
-  read.
+  read. `pending`: what's still open for you ([inbox.md](inbox.md#pending)).
 - **The board** has the other active agents that share your repo (case-insensitive), the ones you
   overlap, and the participants of your open threads, oldest first, including ones that left in
   the last 10 minutes. `scope: "all"` lists every active agent instead, and `others` is then

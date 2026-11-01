@@ -124,8 +124,27 @@ export const methods = {
     agent.wait = null
     clearTimeout(w.timer)
     if (error) w.reject(new AgentError(error))
+  },
+
+  // What's still open for the agent (#53, the closeout): its unread inbox, the open threads it
+  // takes part in, and its questions and proposals that nobody answered (no message from someone
+  // else with that `replyTo`) outside resolved threads.
+  _pending (agent) {
+    const answered = new Set()
+    for (const e of this.log) if (e.msg.replyTo !== null && e.author !== agent.id) answered.add(e.msg.replyTo)
+    const unanswered = this.log.filter(e => e.author === agent.id && ASKS.includes(e.msg.kind) &&
+      !answered.has(e.msg.seq) && this.threads.get(e.msg.thread)?.status !== 'resolved')
+    return {
+      unread: agent.unread.size,
+      openThreads: [...this.threads.values()].filter(t => t.status === 'open' && t.participants.has(agent.id)).map(t => t.id),
+      unanswered: unanswered.map(e => e.msg.seq)
+    }
   }
 }
+
+const ASKS = ['question', 'proposal']
+const DONE_HINT = 'Before you stop, answer what is addressed to you, wait (up to 50 s, at most twice) for replies, then post a handoff covering anything unresolved.'
+const isPending = (p) => p.unread > 0 || p.openThreads.length > 0 || p.unanswered.length > 0
 
 export function register (r) {
   r.command('read', methods._read)
@@ -149,5 +168,13 @@ export function register (r) {
       inbox: this._deliver(agent, inbox),
       cursor: agent.cursor
     }
+  })
+  // The closeout (#53): what's still open, after the inbox above was delivered; and a status "done"
+  // with something still open gets a hint.
+  for (const target of ['catchUp', 'status', 'read']) {
+    r.contribute(target, function ({ agent }) { return { pending: this._pending(agent) } })
+  }
+  r.contribute('status', function ({ msg }, result) {
+    return msg.state === 'done' && isPending(result.pending) ? { hint: DONE_HINT } : null
   })
 }

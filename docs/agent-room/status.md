@@ -7,7 +7,7 @@ See the [module map](README.md#module-map).
 
 | `cmd` | Args | `result` |
 | --- | --- | --- |
-| `status` | `summary?` (≤ 140), `state?`, `focus?` `{issue?, components?, paths?}`, `name?` | `{card, overlaps:[{agent, on:{issue?, components?, paths?}}], deferred?, appliesInMs?}` |
+| `status` | `summary?` (≤ 140), `state?`, `focus?` `{issue?, components?, paths?}`, `name?` | `{card, overlaps:[{agent, on:{issue?, components?, paths?}}], pending, hint?, deferred?, appliesInMs?}` |
 
 - **`status`** updates only the fields you pass (`focus` too: `issue`, `components` and `paths`
   each replace their old value when present). `state` is `exploring`, `editing`, `testing`,
@@ -27,18 +27,13 @@ See the [module map](README.md#module-map).
     `name` and `title` each take their latest value, and `null` leaves the earlier value. So does
     `parent`, except that `null` clears it. Any other field comes from the latest call.
   - Bad arguments still fail at once. A deferred status is dropped if you leave first.
+- **`pending`** is what's still open for you: `{unread, openThreads, unanswered}`, as in `catchUp`
+  and `read` ([inbox.md](inbox.md#pending)). It and `hint` come from `inbox.js`.
+- **`hint`**: a `status` with `state: "done"` while anything is pending still sets `done`, and gets
+  one sentence: "Before you stop, answer what is addressed to you, wait (up to 50 s, at most
+  twice) for replies, then post a handoff covering anything unresolved." Others posting to you
+  then get a hint too ([posts.md](posts.md)). A deferred `status` gets `pending` and its `hint`
+  at once, from what's open when you call it; the card says `done`, and posts to you get their
+  hint, once it's applied.
 
 Overlaps are in [overlap.md](overlap.md), renames in [names.md](names.md).
-
-### Planned in P1
-
-From "Closeout" (#53, `inbox.js`, `status.js`, `posts.js`):
-
-- `status`, `catchUp` and `read` results += `pending: {unread, openThreads, unanswered}`:
-  - `unread`: your unread inbox count.
-  - `openThreads`: ids of the open threads you take part in.
-  - `unanswered`: seqs of your `question` and `proposal` messages that have no reply (no message
-    with `replyTo` equal to that seq) and aren't in a resolved thread.
-- `status` with `state: "done"` while anything is pending: result += `hint`, one sentence. It
-  says to answer what's addressed to you, `wait` (up to 50 s, at most twice), then post a
-  `handoff` covering anything unresolved.

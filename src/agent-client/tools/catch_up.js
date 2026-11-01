@@ -31,6 +31,7 @@ export async function run (args = {}) {
     recent: r.recent.map(m => this._mark(m)),
     messages: this._marked(r.inbox),
     cursor: r.cursor,
+    pending: r.pending,
     inbox: reply.inbox
   }
 }
