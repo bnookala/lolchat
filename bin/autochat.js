@@ -338,12 +338,15 @@ async function startCore ({ auto = false, daemon = false }) {
   let agentRoom = null
   if (daemon) {
     const { AgentRoom } = await import('../src/agents.js')
+    const { harnessJobs } = await import('../src/harness-jobs.js')
     const resumeMs = Number(envVar('AGENT_RESUME_MS'))
     agentRoom = new AgentRoom({
       human: identity.handle,
       ack: !!config.agentsInterventionAck,
       onAck: () => saveConfig({ agentsInterventionAck: true }),
-      limits: envVar('AGENT_RESUME_MS') && resumeMs >= 0 ? { resumeMs } : {}
+      limits: envVar('AGENT_RESUME_MS') && resumeMs >= 0 ? { resumeMs } : {},
+      // Connect agents: planAgents() and setupAgents(), each in a child process.
+      harnesses: harnessJobs()
     })
   }
   const agents = agentRoom && { connect: (hello, peer) => agentRoom.connect(hello, peer), state: () => agentRoom.snapshot(), command: (msg) => agentRoom.command(msg) }
@@ -371,7 +374,8 @@ async function startCore ({ auto = false, daemon = false }) {
   }
   controller.on('change', () => server.publish())
   if (agentRoom) {
-    // The lounge snapshot carries agents: {present, openThreads}; republish it when that changes.
+    // The lounge snapshot carries agents ({present, openThreads, connected, available, active});
+    // republish it when that changes.
     let summary = null
     agentRoom.on('change', () => {
       server.publish('agents')

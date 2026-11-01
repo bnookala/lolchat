@@ -58,6 +58,9 @@ function client () {
 
 const isState = (pred = () => true) => (m) => m.type === 'state' && pred(m)
 const isReply = (id) => (m) => m.type === 'reply' && m.id === id
+// A daemon plans Connect agents from the harness installs it sees (docs/agent-room/human.md): a
+// throwaway HOME and no harness binaries, so it never reads this machine's.
+const noHarnesses = (dir) => ({ HOME: dir, XDG_CONFIG_HOME: path.join(dir, '.config'), AUTOCHAT_HARNESS_PATH: '', CLAUDE_CONFIG_DIR: undefined, CODEX_HOME: undefined, PI_CODING_AGENT_DIR: undefined })
 const counts = ({ present, openThreads, active }) => ({ present, openThreads, active })
 
 test('subscribers get snapshots, coalesced updates, and command replies; one-shots are unchanged', async (t) => {
@@ -140,7 +143,8 @@ test('autochat daemon: headless, driven by hooks and subscribers, clean SIGTERM'
     AUTOCHAT_BOOTSTRAP: testnet.bootstrap.map(b => `${b.host}:${b.port}`).join(','),
     AUTOCHAT_NO_NOTIFY: '1',
     AUTOCHAT_NO_FOCUS: '1',
-    AUTOCHAT_COUNTDOWN_MS: '1500'
+    AUTOCHAT_COUNTDOWN_MS: '1500',
+    ...noHarnesses(path.join(tmp, 'd-home'))
   }
   const daemon = spawn(process.execPath, [BIN, 'daemon'], { env, stdio: ['ignore', 'ignore', 'pipe'] })
   let stderr = ''
@@ -239,7 +243,8 @@ test('autochat join/host/leave reach a running daemon: the lounge shows the new 
     AUTOCHAT_HOME: home,
     AUTOCHAT_BOOTSTRAP: testnet.bootstrap.map(b => `${b.host}:${b.port}`).join(','),
     AUTOCHAT_NO_NOTIFY: '1',
-    AUTOCHAT_NO_FOCUS: '1'
+    AUTOCHAT_NO_FOCUS: '1',
+    ...noHarnesses(path.join(tmp, 'r-home'))
   }
   const daemon = spawn(process.execPath, [BIN, 'daemon'], { env, stdio: ['ignore', 'ignore', 'ignore'] })
   const exited = new Promise((resolve) => daemon.on('exit', resolve))
@@ -269,4 +274,71 @@ test('autochat join/host/leave reach a running daemon: the lounge shows the new 
   daemon.kill('SIGTERM')
   assert.equal(await exited, 0)
   await a.closed
+})
+
+test('autochat daemon: Connect agents sets up a harness, and the lounge shows it connected', { timeout: 60000 }, async (t) => {
+  const testnet = await createTestnet(3)
+  t.after(() => testnet.destroy())
+  const home = path.join(tmp, 'ca')
+  const userHome = path.join(tmp, 'ca-home')
+  // Copilot CLI is installed (its config dir exists), and autochat isn't registered with it yet.
+  const copilotHome = path.join(userHome, '.copilot')
+  fs.mkdirSync(copilotHome, { recursive: true })
+  fs.mkdirSync(home, { recursive: true })
+  fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ room: 'lc1-connect-' + Math.random().toString(36).slice(2, 12), announce: false }))
+  process.env.AUTOCHAT_HOME = home
+  const env = {
+    ...process.env,
+    AUTOCHAT_HOME: home,
+    AUTOCHAT_BOOTSTRAP: testnet.bootstrap.map(b => `${b.host}:${b.port}`).join(','),
+    AUTOCHAT_NO_NOTIFY: '1',
+    AUTOCHAT_NO_FOCUS: '1',
+    ...noHarnesses(userHome),
+    COPILOT_HOME: copilotHome
+  }
+  const daemon = spawn(process.execPath, [BIN, 'daemon'], { env, stdio: ['ignore', 'ignore', 'ignore'] })
+  const exited = new Promise((resolve) => daemon.on('exit', resolve))
+  t.after(() => daemon.kill('SIGKILL'))
+  let pong = null
+  for (let i = 0; i < 100 && !pong; i++) {
+    pong = await send({ type: 'ping' }, 300)
+    if (!pong) await new Promise(resolve => setTimeout(resolve, 100))
+  }
+  assert.equal(pong?.agentRoom, true)
+
+  const lounge = client()
+  lounge.send({ type: 'subscribe', v: 1, client: 'test' })
+  const before = await lounge.next(isState(s => s.agents?.available?.length > 0), 10000, 'copilot available')
+  assert.deepEqual(before.agents, { present: 0, openThreads: 0, connected: [], available: ['copilot'], active: 0 })
+
+  const human = client()
+  human.send({ type: 'subscribe', v: 1, client: 'test', stream: 'agents' })
+  await human.next(m => m.type === 'agents', 10000, 'agents snapshot')
+  human.send({ type: 'cmd', id: 1, cmd: 'agents.setupPlan' })
+  const plan = await human.next(isReply(1), 20000, 'agents.setupPlan')
+  assert.equal(plan.ok, true, plan.error)
+  assert.deepEqual(plan.result.plans.map(p => [p.id, p.action]), [['copilot', 'add'], ['claude', 'absent'], ['gemini', 'absent'], ['opencode', 'absent'], ['codex', 'absent'], ['pi', 'absent']])
+  assert.equal(plan.result.plans[0].where, '~/.copilot/mcp-config.json')
+  assert.equal(plan.result.plans[0].detail[0], 'add to ~/.copilot/mcp-config.json')
+
+  human.send({ type: 'cmd', id: 2, cmd: 'agents.setup', harnesses: ['copilot', 'nope'] })
+  const setup = await human.next(isReply(2), 60000, 'agents.setup')
+  assert.deepEqual(setup.result, { applied: ['copilot'], failed: [{ id: 'nope', error: 'unknown harness: nope' }] })
+  const written = JSON.parse(fs.readFileSync(path.join(copilotHome, 'mcp-config.json'), 'utf8')).mcpServers.autochat
+  assert.deepEqual([written.command, ...written.args.slice(1)], [process.execPath, 'mcp', '--harness', 'copilot'], "the daemon's own node and autochat")
+  const after = await lounge.next(isState(s => s.agents?.connected?.length > 0), 10000, 'copilot connected')
+  assert.deepEqual(after.agents, { present: 0, openThreads: 0, connected: ['copilot'], available: [], active: 0 })
+
+  // Agents can't: only the agents stream has these commands.
+  const agent = client()
+  agent.send({ type: 'agent-hello', v: 1, harness: 'copilot', name: null, pid: process.pid, cwd: '/w/x', repo: 'owner/x', resume: null })
+  await agent.next((m) => m.type === 'agent-welcome', 10000, 'agent welcome')
+  agent.send({ type: 'cmd', id: 3, cmd: 'agents.setup', harnesses: ['copilot'] })
+  assert.equal((await agent.next(isReply(3))).error, 'unknown command')
+  agent.close()
+  human.close()
+
+  daemon.kill('SIGTERM')
+  assert.equal(await exited, 0)
+  await lounge.closed
 })

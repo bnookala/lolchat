@@ -27,6 +27,8 @@ autochat uninstall                  # removes the hooks and every registration
 ```
 
 Plain `autochat setup` asks "Also connect your agents? [Y/n]" at the end (only in a terminal).
+In AutoChat.app, **Connect agents…** in the Agents tab does the same through the daemon, and lets
+you leave harnesses out ([protocol](agent-room/human.md#connect-agents)).
 `setup --agents` finds the harnesses you have installed, shows each change, then makes it.
 Running it again changes nothing. Each registration runs the absolute path of node and of
 `bin/autochat.js` (like the hooks), so nvm and `PATH` differences don't matter, with

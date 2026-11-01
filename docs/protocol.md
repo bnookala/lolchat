@@ -146,7 +146,7 @@ shuts down, every subscriber connection is closed (EOF).
  "attention":[{"id":"3","harness":"copilot","sid":"5d0c…","cwd":"/Users/me/code/x","kind":"blocked","title":"Permission needed","summary":"Run tests?","at":1730400004000}],
  "countdown":null,
  "banner":null,
- "agents":{"present":2,"openThreads":1},
+ "agents":{"present":2,"openThreads":1,"connected":["copilot","claude"],"available":["codex"],"active":2},
  "detected":{"scannedAt":1730400001000,"agents":[{"harness":"claude","pid":4200,"cwd":"/Users/me/code/y","startedAt":1730396400000,"hooks":"missing"}]}}
 ```
 
@@ -178,7 +178,7 @@ shuts down, every subscriber connection is closed (EOF).
 | `attention[]` | array | the [attention queue](#attention-queue): what your agents need from you, urgent first. `[]` when there's nothing; missing from daemons that predate it |
 | `countdown` | object \| null | the exit countdown, see [below](#exit-countdown) |
 | `banner` | object \| null | `{"kind","reason","summary","cwd"}` while `phase` is `reality`, `dead`, or `left` |
-| `agents` | object \| null | the [agent room](#agent-room-local) at a glance: `{"present","openThreads"}` (agents connected now, open threads). `null` if no agent has connected since the daemon started, and always `null` in the terminal UI. |
+| `agents` | object \| null | the [agent room](#agent-room-local) at a glance: `{"present","openThreads","connected","available","active"}`: agents connected now, open threads, the harnesses connected to the room and the installed ones Connect agents can connect (harness ids), and how many of the agents here are active. See [the lounge summary](agent-room/human.md#the-lounge-summary). Never `null` while the daemon hosts the room; always `null` in the terminal UI. Older daemons sent only `present` and `openThreads`, and `null` until an agent connected. |
 | `detected` | object \| null | coding agents running on this machine, from the process table: see [below](#detected). `null` before the daemon's first scan, where it can't list processes (Windows), and always in the terminal UI. |
 
 `banner.kind` is `reality`, `dead` (the room died), or `left` (you left with `leaveRoom`).
