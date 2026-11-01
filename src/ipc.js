@@ -24,13 +24,13 @@ export function encodeState (state) {
 }
 
 // An `agents` snapshot line: like encodeState, and if the cards alone are still too big,
-// their focus.paths lists are shortened.
+// their focus.paths and focus.live lists are shortened.
 export function encodeAgents (snap) {
   let line = encodeState(snap)
   if (Buffer.byteLength(line) <= MAX || !Array.isArray(snap.agents)) return line
   let s = JSON.parse(line)
   for (let keep = 64; Buffer.byteLength(line) > MAX && keep >= 0; keep = keep ? Math.floor(keep / 2) : -1) {
-    s = { ...s, agents: s.agents.map(c => c.focus ? { ...c, focus: { ...c.focus, paths: c.focus.paths.slice(0, keep) } } : c) }
+    s = { ...s, agents: s.agents.map(c => c.focus ? { ...c, focus: { ...c.focus, paths: c.focus.paths.slice(0, keep), live: c.focus.live?.slice(0, keep) } } : c) }
     line = JSON.stringify(s)
   }
   return line

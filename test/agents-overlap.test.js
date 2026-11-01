@@ -242,3 +242,15 @@ test('status returns knownComponents: the other cards\' components for your repo
   assert.deepEqual(r.knownComponents.slice(0, 11), [...Array.from({ length: 10 }, (_, i) => `e${i}`), 'd0'])
   for (const x of [b, c, d, e, elsewhere, nowhere]) x.close()
 })
+
+test('the agents snapshot stays under 256 KiB: long focus.live lists are shortened too', async () => {
+  const { encodeAgents, MAX } = await import('../src/ipc.js')
+  const long = (i, j) => `src/${'deep/'.repeat(18)}${i}-${j}.js`
+  const agents = Array.from({ length: 20 }, (_, i) => ({ name: `a${i}`, focus: { issue: null, components: [], paths: [], live: Array.from({ length: 200 }, (_, j) => long(i, j)) } }))
+  const snap = { type: 'agents', v: 1, agents, threads: [], messages: [] }
+  assert.ok(JSON.stringify(snap).length > MAX)
+  const out = JSON.parse(encodeAgents(snap))
+  assert.ok(Buffer.byteLength(JSON.stringify(out)) <= MAX)
+  assert.equal(out.agents.length, 20, 'every card stays')
+  assert.ok(out.agents.every(c => c.focus.live.length < 200 && c.focus.live[0] === agents.find(a => a.name === c.name).focus.live[0]))
+})

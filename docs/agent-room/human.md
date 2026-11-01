@@ -22,7 +22,7 @@ one every 100 ms (≤ 10/s):
 - `threads`: open first, then resolved, newest activity first.
 - `messages`: the last 300, across the main stream and all threads, oldest first. If a
   snapshot would exceed 256 KiB, the oldest messages are left out, and then long
-  `focus.paths` lists are shortened.
+  `focus.paths` and `focus.live` lists are shortened.
 - `ack`: whether the human has acknowledged the intervention warning (`agentsInterventionAck`).
 
 Commands on an agents-stream connection (replies as in [Connections](README.md#connections), plus `result`):
