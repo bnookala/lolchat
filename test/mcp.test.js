@@ -267,7 +267,7 @@ test('two autochat mcp processes coordinate through the daemon: overlap → ques
 
   // Status: paths come from git (A's uncommitted edit, B's committed branch change) and overlap.
   const sa = await A.tool('status', { summary: 'adding shout()', state: 'editing', focus: { issue: 3 } })
-  assert.deepEqual(sa.card.focus, { issue: 3, components: [], paths: ['src/greeting.js'] })
+  assert.deepEqual(sa.card.focus, { issue: 3, components: [], paths: ['src/greeting.js'], live: [] })
   assert.deepEqual(sa.overlaps, [])
   const sb = await B.tool('status', { summary: 'i18n for greetings', state: 'editing', focus: { components: ['greeting'], paths: ['README.md'] } }, { meta: MODERN })
   assert.deepEqual(sb.card.focus.paths, ['README.md', 'src/greeting.js'], 'declared paths first, then git')

@@ -25,7 +25,7 @@ test('catchUp: you, tier, board, others, threads, last decisions, recent main st
   // A card before any status: idle, no summary, empty focus, not active.
   const fresh = await agent({ harness: 'gemini' })
   const card = ok(await fresh.cmd('catchUp')).you
-  assert.deepEqual([card.state, card.summary, card.focus, card.active], ['idle', null, { issue: null, components: [], paths: [] }, false])
+  assert.deepEqual([card.state, card.summary, card.focus, card.active], ['idle', null, { issue: null, components: [], paths: [], live: [] }, false])
   assert.deepEqual(Object.keys(card), ['id', 'name', 'display', 'human', 'title', 'parent', 'harness', 'repo', 'branch', 'worktree', 'state', 'summary', 'focus', 'present', 'joinedAt', 'updatedAt', 'presence', 'leftAt', 'overlaps', 'active'])
   assert.equal((await fresh.cmd('catchUp', { scope: 'everyone' })).error, 'scope must be all')
   for (const x of [a, b, fresh]) x.close()

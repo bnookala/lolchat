@@ -20,6 +20,7 @@ export const LIMITS = {
   mainPosts: 10,
   threadPosts: 40,
   statusGapMs: 5000,
+  pathsGapMs: 2000,
   waitDefaultMs: 30000,
   waitMaxMs: 50000,
   readDefault: 50,
@@ -36,6 +37,7 @@ export const LIMITS = {
   nextStep: 140,
   component: 40,
   components: 10,
+  knownComponents: 20,
   path: 300,
   paths: 200,
   to: 16

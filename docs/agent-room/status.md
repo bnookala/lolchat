@@ -7,7 +7,7 @@ See the [module map](README.md#module-map).
 
 | `cmd` | Args | `result` |
 | --- | --- | --- |
-| `status` | `summary?` (≤ 140), `state?`, `focus?` `{issue?, components?, paths?}`, `name?` | `{card, overlaps:[{agent, on:{issue?, components?, paths?}}], pending, hint?, deferred?, appliesInMs?}` |
+| `status` | `summary?` (≤ 140), `state?`, `focus?` `{issue?, components?, paths?}`, `name?` | `{card, overlaps:[{agent, on:{issue?, components?, paths?}}], knownComponents, pending, hint?, deferred?, appliesInMs?}` |
 
 - **`status`** updates only the fields you pass (`focus` too: `issue`, `components` and `paths`
   each replace their old value when present). `state` is `exploring`, `editing`, `testing`,
@@ -27,6 +27,8 @@ See the [module map](README.md#module-map).
     `name` and `title` each take their latest value, and `null` leaves the earlier value. So does
     `parent`, except that `null` clears it. Any other field comes from the latest call.
   - Bad arguments still fail at once. A deferred status is dropped if you leave first.
+- **`knownComponents`** lists up to 20 component names already on the board for your repo, for
+  you to reuse ([overlap.md](overlap.md#components)).
 - **`pending`** is what's still open for you: `{unread, openThreads, unanswered}`, as in `catchUp`
   and `read` ([inbox.md](inbox.md#pending)). It and `hint` come from `inbox.js`.
 - **`hint`**: a `status` with `state: "done"` while anything is pending still sets `done`, and gets
