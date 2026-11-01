@@ -230,7 +230,7 @@ test('the plugin never throws or rejects, and a missing node or autochat fails q
   await hooks.event({ event: { type: 'server.instance.disposed', properties: {} } })
   // The spawns fail asynchronously (ENOENT): still nothing thrown.
   await new Promise(resolve => setTimeout(resolve, 300))
-  assert.deepEqual(Object.keys(hooks).sort(), ['chat.message', 'event', 'tool.execute.before'])
+  assert.deepEqual(Object.keys(hooks).sort(), ['chat.message', 'event', 'tool.execute.after', 'tool.execute.before'])
 })
 
 // --- install, rerun, uninstall ---------------------------------------------------------------------

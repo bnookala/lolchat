@@ -22,6 +22,14 @@ if (cmd === 'hook') {
     const { runHook } = await import('../src/hook.js')
     const res = await runHook(args[0] || 'unknown', { harness })
     if (debug) process.stderr.write(JSON.stringify(res) + '\n')
+    // The doorbell's line, in the format this harness reads: written out in full before exiting.
+    if (res?.output) {
+      process.stdout.on('error', () => {})
+      await new Promise((resolve) => {
+        const timer = setTimeout(resolve, 1000)
+        process.stdout.write(res.output + '\n', () => { clearTimeout(timer); resolve() })
+      })
+    }
   } catch (err) {
     if (debug) process.stderr.write(String(err?.stack || err) + '\n')
   }

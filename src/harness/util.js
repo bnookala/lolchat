@@ -183,6 +183,12 @@ export function scanEvents (file, offset, want, onEvent) {
 
 // --- processes --------------------------------------------------------------------------------------
 
+/** A pid from an environment variable (a positive integer), or null. */
+export function envPid (value) {
+  const n = Number(value)
+  return typeof value === 'string' && /^\d+$/.test(value) && Number.isSafeInteger(n) && n > 0 ? n : null
+}
+
 export function pidAlive (pid) {
   try { process.kill(pid, 0); return true } catch (err) { return err.code === 'EPERM' }
 }

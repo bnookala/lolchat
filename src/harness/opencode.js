@@ -19,6 +19,9 @@ import { byTrigger, modesOf, originFrom } from './event.js'
 // - It loads every {plugin,plugins}/*.{js,ts} in its config dirs at startup and calls each export
 //   with {client, project, worktree, directory, serverUrl, $}. The `event` hook gets every bus
 //   event without being awaited; chat.message and tool.execute.before are awaited.
+// - tool.execute.after is awaited too, and the model reads what it leaves in `output`: a string in
+//   output.output for built-in tools, MCP content blocks in output.content for MCP tools. The
+//   plugin's doorbell appends its line there.
 // - `opencode run` creates its session denying the question, plan_enter and plan_exit permissions
 //   (`opencode github` denies question): session.created/updated carry those rules, which is
 //   what marks a headless session, `run --attach` included. A session that run continues

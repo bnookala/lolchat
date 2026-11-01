@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process'
 import { envVar } from '../env.js'
 import { TOOLS, instructions, agentHello, gitInfo, DaemonLink, Tools, syncLivePaths } from '../agent-client.js'
 import { titleLine } from '../agent-client/binding.js'
+import { ring as ringDoorbell } from '../doorbell.js'
 
 // The autochat extension for pi (#35). pi has no hooks and no MCP, so the stub that autochat
 // writes to ~/.pi/agent/extensions/autochat.ts loads this module, and it does both jobs:
@@ -13,7 +14,8 @@ import { titleLine } from '../agent-client/binding.js'
 // - The agent room (`room: true`): the six agent-room tools, registered as pi tools named
 //   autochat_catch_up, autochat_status, …, over the daemon's agent protocol
 //   (src/agent-client.js, as `autochat mcp` does). pi namespaces nothing, and `read` is one of
-//   its built-in tools, hence the prefix.
+//   its built-in tools, hence the prefix. It also rings the room's doorbell (src/doorbell.js)
+//   after the agent's other tool calls.
 //
 // It runs inside pi, so it never throws into pi, and it prints nothing (but AUTOCHAT_DEBUG logs on
 // stderr): pi's TUI owns the terminal.
@@ -226,6 +228,15 @@ function agentRoom (pi, { env, log, joinDelayMs = JOIN_DELAY_MS }) {
       const active = (pi.getActiveTools?.() || []).map(t => typeof t === 'string' ? t : t?.name)
       if (!active.some(n => typeof n === 'string' && n.startsWith(TOOL_PREFIX))) return
       return { systemPrompt: `${e.systemPrompt}\n\n${ETIQUETTE}` }
+    } catch {}
+  })
+  // The doorbell (#52): after every tool call but the room's own, while this agent is in the room,
+  // ask the daemon whether anything there is waiting for it, and add its line to the result.
+  pi.on('tool_result', async (e, ctx) => {
+    try {
+      if (!link?.connected || typeof e?.toolName !== 'string' || e.toolName.startsWith(TOOL_PREFIX) || !Array.isArray(e.content)) return
+      const text = await ringDoorbell({ harness: 'pi', sessionId: ctx?.sessionManager?.getSessionId?.() ?? null, pid: process.pid })
+      if (text) return { content: [...e.content, { type: 'text', text }] }
     } catch {}
   })
   for (const t of TOOLS) {

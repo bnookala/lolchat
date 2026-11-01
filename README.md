@@ -44,7 +44,9 @@ Things we learned against Copilot CLI 1.0.97, which differ from or aren't in the
 - `notification` payloads use `notificationType`, not `notification_type`.
 - In autopilot, `ask_user` is auto-answered ("user unavailable"). The modal stays up long enough to read and says so.
 - Repo-level `.github/hooks` don't run for untrusted folders. autochat installs user-level hooks.
-- `preToolUse` command hooks are fail-closed. The autochat hook always exits 0 and prints nothing.
+- `preToolUse` command hooks are fail-closed. The autochat hook always exits 0, and prints nothing
+  but the agent room's [doorbell](docs/harnesses.md#the-doorbell), `{"additionalContext": "…"}`,
+  which Copilot CLI (1.0.102) hands the model after that tool's result.
 
 ## Install
 

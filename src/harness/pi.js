@@ -23,6 +23,8 @@ import { defaultAutonomy, originFrom } from './event.js'
 //   session_shutdown (quit). Session ids are UUIDs; /new, /resume and /fork shut the session
 //   down and start another, /reload shuts down and starts the same one.
 // - pi has no permission prompts and no ask-the-user tool, so it never reports a request.
+// - A tool_result handler that returns {content} replaces what the model reads of that tool's
+//   result: the extension's doorbell appends a text block.
 
 const MODES = ['interactive', 'rpc', 'print', 'json']
 const HEADLESS = new Set(['print', 'json'])

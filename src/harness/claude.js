@@ -2,7 +2,7 @@ import path from 'node:path'
 import { isValidSessionId } from '../paths.js'
 import { sanitize } from '../protocol.js'
 import { focusOrigin } from '../launcher.js'
-import { readJson, writeJson, planned, tilde, exists, isObj, shq } from './util.js'
+import { readJson, writeJson, planned, tilde, exists, isObj, shq, envPid } from './util.js'
 import { SERVER, argsFor } from './mcp-config.js'
 import { byTrigger, modesOf, originFrom } from './event.js'
 
@@ -264,6 +264,20 @@ function autonomy (payload, session) {
   return a === 'interactive' && session.headless === null && headlessCounts ? 'unknown' : a
 }
 
+// --- the doorbell -----------------------------------------------------------------------------------
+
+// Verified against Claude Code 2.1.273: hookSpecificOutput.additionalContext from a PostToolUse
+// hook reaches the model right after that tool's result ("PostToolUse:<tool> hook additional
+// context: …"). Our PostToolUse hook already runs for every tool. Hooks get CLAUDE_PID, the Claude
+// Code process, which is also the harness pid in `autochat mcp`'s hello.
+const ROOM_TOOL = new RegExp(`^mcp__${SERVER}__`)
+const doorbell = {
+  event: 'PostToolUse',
+  skip: (p) => typeof p.tool_name === 'string' && ROOM_TOOL.test(p.tool_name),
+  pid: (env) => envPid(env.CLAUDE_PID),
+  output: (text) => JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: text } })
+}
+
 // --- MCP registration: through its CLI (user scope) ---------------------------------------------------
 
 const mcp = {
@@ -333,6 +347,7 @@ export default {
   hookStatus,
   normalize,
   autonomy,
+  doorbell,
   focus: focusOrigin,
   mcp
 }

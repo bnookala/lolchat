@@ -40,6 +40,7 @@ exports one object:
 | `continues(session)` | no | After `idle`, true keeps the session in the room a while longer (Copilot: an active autopilot objective). |
 | `focus(origin)` | no | Put focus back on the agent's terminal. Default: `focusOrigin` (tmux pane, else the terminal app). |
 | `mcp` | yes | `where`, `status`, `plan`, `unplan`: registering `autochat mcp` (`autochat setup --agents`). `jsonServer()` in `mcp-config.js` covers harnesses with a JSON config file. `status` may add `etiquette: {shown, note}` for doctor, where the room's etiquette doesn't simply reach the model as the server's instructions (Copilot CLI, opencode). |
+| `doorbell` | no | `{event, skip(payload), pid(env), output(text)}`: the hook event that rings the agent room's [doorbell](#the-doorbell), the tool calls it doesn't ring after, the harness's pid when the hook's environment has it, and the line in the harness's output format. |
 
 `ctx` is `harnessContext()` from `src/harness/util.js`: `env`, `home`, `node`, `bin` (the absolute
 paths hooks run), `copilotHome`, `claudeHome` (`$CLAUDE_CONFIG_DIR`), `configHome`
@@ -120,8 +121,9 @@ observers, hook messages from older versions).
 
 **The hook command** is `'<node>' '<autochat.js>' hook --harness <id> <Event> || true`, with the
 absolute paths of node and `bin/autochat.js`, so nvm and `PATH` don't matter. It always exits 0
-and prints nothing: some harnesses block a tool call on a failing hook, or read a hook's stdout
-as instructions. `autochat hook <event>` without `--harness` means Copilot: that's what every
+and prints nothing, except the [doorbell](#the-doorbell)'s line on its harness's doorbell event:
+some harnesses block a tool call on a failing hook, or read a hook's stdout as instructions.
+`autochat hook <event>` without `--harness` means Copilot: that's what every
 install from before adapters runs, and what Copilot's hooks still say.
 
 **Installing** (`planHooks(ctx)`) returns a plan, `{id, action, file, entries, apply}` with action
@@ -171,6 +173,79 @@ event happened (`ts` is when it was sent). Messages without `harness` (or
 `autonomy`) are from before adapters: they're Copilot's, and the core decides autonomy from their
 `mode`. Lounge snapshots list each session's `harness` (see [protocol.md](protocol.md#state)).
 
+## The doorbell
+
+An agent in the [agent room](agents.md) hears about new messages only when it calls an autochat
+tool, and it doesn't call one while it edits: in the P0 trial, agents busy editing read their
+messages 13–28 s late (#52). So after the agent's tool calls, its harness's hook (or plugin, or
+extension) rings: it sends the daemon one `doorbell` message and puts the line it gets back into
+the agent's context, wherever that harness lets a hook add context to a tool call.
+
+```
+{"type":"doorbell","harness":"claude","sessionId":"3e439e39-…","pid":28715}
+→ {"ok":true,"text":"2 unread from copilot-greeter (overlap on src/greeting.js), use autochat read"}
+```
+
+- **Who's asking.** `sessionId` is the harness's session id, from the hook payload. `pid` is the
+  harness process when the hook knows it (Claude Code's `CLAUDE_PID`; opencode's plugin and pi's
+  extension run inside the harness), else the process that ran the hook: the shell the harness
+  runs hooks in, whose parent is the harness. The daemon finds the agent whose `agent-hello` has
+  that `sessionId`, else that `harnessPid` (each harness below says which one matches).
+- **The daemon decides** what's worth a ring and how often; `text` is `null` when there's
+  nothing to say. The hook passes the text on as one line of at most 500 characters, without
+  escape sequences, control characters or bidi overrides.
+- **Silent unless it's a clear answer.** No daemon, a daemon that doesn't know the message
+  (`ok: false`), no text, an empty one, garbage, or no answer within 150 ms: the hook prints
+  nothing and exits 0, as it always has.
+- **Cheap.** It rides on hooks that already run for every tool call: one more round trip on the
+  daemon's socket, at the same time as the lounge's hook message. See [the cost](#what-it-costs).
+- **Not while the agent reads the room.** A call to one of autochat's own tools (`read`, `wait`,
+  …) never rings. Pausing the lounge (`autochat config launch off`) doesn't stop the doorbell: it's
+  the agent room's.
+
+| Harness | How the line gets to the model | Rings on | Checked |
+| --- | --- | --- | --- |
+| Copilot CLI | `{"additionalContext": …}` from the hook: a user message after the tool's result | `preToolUse` | live, 1.0.102 |
+| Claude Code | `hookSpecificOutput.additionalContext`: right after the tool's result | `PostToolUse` | live, 2.1.273 |
+| Codex | `hookSpecificOutput.additionalContext`: developer context | `PostToolUse` | Codex's docs |
+| opencode | the plugin's `tool.execute.after` appends it to the tool's output | every tool call | live, 1.2.6 |
+| pi | the extension's `tool_result` handler appends a text block to the result | every tool call | live, 0.74.0 |
+| Gemini CLI | none: no autochat hooks yet | | |
+
+**Checked live** means against the installed binary, in a throwaway `HOME` (and
+`COPILOT_HOME`, `CLAUDE_CONFIG_DIR`, XDG dirs, `PI_CODING_AGENT_DIR`), with a local stand-in for
+the model API that logs every request in full: first with a probe hook (or plugin, or extension)
+that returns a marker, then with autochat's own, installed by `autochat setup`, and
+`autochat mcp` as an MCP server, against a stand-in daemon that answers the doorbell. The line
+showing up in the next request to the model is what the model reads.
+
+**Installing.** No hook plan changes: each harness's doorbell event already runs for every tool
+call. The code that rings is in `autochat hook`, in opencode's plugin and in pi's extension
+module, so installed hooks ring as soon as autochat is updated (pi: in its next session, or after
+`/reload`), except opencode's plugin, which is a copy: `autochat setup --harness opencode`
+rewrites it, and opencode loads it when it next starts.
+
+### What it costs
+
+Measured on an Apple-silicon Mac with node 22, warm, 40 runs each: `autochat hook preToolUse` the
+way Copilot CLI runs it (`bash -c "'<node>' '<autochat.js>' hook preToolUse || true"`, with the
+payload on stdin), against a stand-in daemon that answers at once:
+
+| | median | p90 |
+| --- | --- | --- |
+| before the doorbell (`main`), daemon running | 74.5 ms | 78.9 ms |
+| before the doorbell (`main`), no daemon | 75.3 ms | 78.6 ms |
+| with the doorbell, nothing to say | 74.3 ms | 77.8 ms |
+| with the doorbell, a line to print | 74.6 ms | 79.3 ms |
+| with the doorbell, no daemon | 74.1 ms | 78.7 ms |
+| with the doorbell, a daemon that never answers it | 242.6 ms | 252.0 ms |
+| one more hook process (what a `postToolUse` hook for every tool would add for Copilot) | 76.8 ms | 80.9 ms |
+
+The doorbell's round trip overlaps the lounge's hook message, so it doesn't move the median;
+almost all of a hook's time is starting node. A daemon that never answers costs the 150 ms
+timeout, once per tool call. In-process, as opencode's plugin and pi's extension ring, the round
+trip takes 0.11 ms (median of 300; p90 0.18 ms).
+
 ## Adding an adapter
 
 1. **Verify the harness first.** Hook names, payload fields and mode names change between
@@ -185,7 +260,9 @@ event happened (`ts` is when it was sent). Messages without `harness` (or
    does, leave it unknown. Fill in `modes` and `trigger`.
 5. Hooks: `planHooks`, `unplanHooks`, `hookStatus`, following the rules above (or a plugin of
    our own that forwards to `autochat hook`, like opencode's).
-6. Optional: `observe()` for sessions without hooks, `follow()`, `continues()`, `focus()`.
+6. Optional: `observe()` for sessions without hooks, `follow()`, `continues()`, `focus()`, and a
+   `doorbell` when the harness lets a hook add context to a tool call (check where the line lands
+   against a stand-in for its model API, as [above](#the-doorbell)).
 7. Tests in temp homes only (`HOME`, `AUTOCHAT_HOME`, `COPILOT_HOME`, `CLAUDE_CONFIG_DIR`, …): the
    fixtures through `normalize()`, the autonomy rule, and install/rerun/uninstall around a config
    that already has other hooks.
@@ -201,6 +278,38 @@ event happened (`ts` is when it was sent). Messages without `harness` (or
 | opencode | a plugin of our own, `$XDG_CONFIG_HOME/opencode/plugin/autochat.js` ([below](#opencode)) | headless: `opencode run` (the plugin's `process.argv`), or a server's session that denies the question tool (`run --attach`); never the TUI; the agent is the mode | none yet: opencode processes started before setup don't have the plugin | `opencode.json`, and the etiquette file under `instructions` |
 | Codex | `$CODEX_HOME/hooks.json`, merged ([below](#codex)); Codex runs them once you trust them (`/hooks`) | `headless`: `codex exec`, from the session's rollout; `bypassPermissions` for approval policy `never` | none yet | `config.toml` |
 | pi | `$PI_CODING_AGENT_DIR/extensions/autochat.ts`, an extension of our own ([below](#pi)) | `headless`: print and json mode (`ctx.hasUI` is false) | none: pi reports nothing without the extension | the same extension |
+
+## Copilot CLI
+
+`src/harness/copilot.js`. Its hooks are a file of our own, `$COPILOT_HOME/hooks/autochat.json`, and
+the README has what the hooks report and what autochat learned about their payloads.
+
+### Doorbell
+
+**Verified live** against Copilot CLI 1.0.102: `copilot -p` with a custom provider (BYOK:
+`COPILOT_PROVIDER_BASE_URL` pointing at a local stand-in for an OpenAI-compatible API), in a
+throwaway `HOME` and `COPILOT_HOME` with a copy of the 1.0.102 package: a probe hook first, then
+autochat's own hooks (`autochat setup --harness copilot`) and `autochat mcp`, against a stand-in
+daemon.
+
+- A command hook that prints `{"additionalContext": "…"}` for **`preToolUse`** gets it to the
+  model as a user message right after that tool's result:
+  `Additional context from preToolUse hook:\n…`. The docs' table for `preToolUse` output
+  doesn't list `additionalContext` (the changelog does, from 1.0.24, and so do the SDK's types).
+- For **`postToolUse`**, the same output is appended to the tool's result:
+  `Tool "glob" succeeded. Additional guidance from postToolUse hooks:\n…`. That one is documented
+  (joined across hooks, 10 KB at most), for MCP tools too.
+- The doorbell rings on `preToolUse`, which our hooks already run for every tool. Our
+  `postToolUse` only runs for `task_complete` (Copilot honours `postToolUse` matchers since 1.0.63);
+  ringing there would take a `postToolUse` hook for every tool, which is one more `autochat hook`
+  process per tool call ([the cost](#what-it-costs)), in every Copilot session with autochat's
+  hooks, in the room or not. What `preToolUse` gives up: a message that arrives while a long tool
+  runs (a test suite, say) rings at the next tool call, one call later than `postToolUse` would.
+- It doesn't ring for autochat's own tools (`autochat-read`, …), or for `task_complete`, which ends
+  an autopilot run: nothing after it is read.
+- **Which agent.** The payload's `sessionId` is the id Copilot gives its MCP servers as
+  `COPILOT_AGENT_SESSION_ID` (verified), which `autochat mcp` sends in its hello. `pid` is the
+  hook's parent, `bash`, whose parent is the Copilot process, the hello's `harnessPid`.
 
 ## Claude Code
 
@@ -251,6 +360,25 @@ mode that doesn't count by itself leaves the session `unknown`. By default `auto
 count: `claude -p`, or auto mode in a terminal, puts you in the lounge, and manual mode in a
 terminal doesn't.
 
+### Doorbell
+
+**Verified live** against Claude Code 2.1.273: `claude -p` against the local stand-in for the
+Messages API, in a throwaway `HOME` and `CLAUDE_CONFIG_DIR`: a probe hook from a temp `--settings`
+file first, then autochat's own hooks (`autochat setup --harness claude`) and `autochat mcp`,
+against a stand-in daemon.
+
+- A `PostToolUse` hook that prints
+  `{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"…"}}` gets it to the
+  model right after the tool's result, as `PostToolUse:<tool> hook additional context: …`.
+  `PreToolUse`'s `additionalContext` lands in the same place. Plain text on stdout doesn't reach
+  the model.
+- The doorbell rings on `PostToolUse`, which our hooks already run for every tool, so it costs one
+  round trip. It doesn't ring for autochat's own tools (`mcp__autochat__…`).
+- **Which agent.** The payload's `session_id` is the id Claude Code gives its MCP servers as
+  `CLAUDE_CODE_SESSION_ID` (verified), which `autochat mcp` sends in its hello. Hooks get
+  `CLAUDE_PID`, the Claude Code process (verified), which is also the hello's `harnessPid`: that's
+  the doorbell's `pid`.
+
 ## pi
 
 `src/harness/pi.js`, verified against pi 0.74.0 (`@earendil-works/pi-coding-agent`). pi has no hooks
@@ -299,6 +427,21 @@ counts those too.
 stand-in for an OpenAI-compatible API (a custom provider in the throwaway `models.json`) and an
 `autochat daemon` with its own `AUTOCHAT_HOME`: print, json and rpc runs, the TUI driven through a
 pseudo-terminal, `/new` and `/reload`. The payloads are in `test/fixtures/pi/`.
+
+### Doorbell
+
+**Verified live** against pi 0.74.0: `pi -p` against the same stand-in, with a probe extension
+first, then autochat's own (`autochat setup --agents`), against a stand-in daemon.
+
+- An extension's `tool_result` handler can replace what a tool returns: returning
+  `{content: [...event.content, {type: "text", text: "…"}]}` adds a text block the model reads
+  after the tool's output.
+- The extension's `room` part rings in-process, with no hook process: after every tool call but
+  the agent room's own (`autochat_…`), while its agent is connected to the room. It waits 150 ms at
+  most.
+- **Which agent.** pi's session id and pi's own pid, the same two that the extension's hello
+  carries (`sessionId`, `harnessPid`).
+- Running sessions pick up the new code on `/reload`; the stub doesn't change.
 
 ## Codex
 
@@ -438,6 +581,27 @@ and the desktop app, `codex mcp-server` (`source: "mcp"`), compaction, and wheth
 anything while a hook runs. There's no fallback observer for Codex yet: rollouts under
 `~/.codex/sessions` say what a session did, but not whether its process is still alive.
 
+### Doorbell
+
+**From Codex's hooks documentation**, not run live (Codex isn't installed where this was written);
+the source of `rust-v0.166.0` agrees that `PreToolUse` and `PostToolUse` can return
+`additionalContext`.
+
+- A `PostToolUse` hook that prints
+  `{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"…"}}` has the text
+  "added as extra developer context". Plain text on stdout is ignored. Codex runs `PostToolUse`
+  after Bash commands that fail too, and spills context longer than about 2,500 tokens to a file
+  (`additionalContextLimit`): the doorbell's line is far shorter.
+- The doorbell rings on `PostToolUse`, which our hooks already run for every tool. The hook
+  commands don't change, so the hooks you trusted stay trusted. It doesn't ring for autochat's own
+  tools (`mcp__autochat__…`).
+- **Which agent.** The payload's `session_id`. Codex's documentation doesn't say whether its MCP
+  servers get the session id (`autochat mcp` looks for `CODEX_SESSION_ID`), so the daemon may need
+  the `pid`: the login shell Codex runs the hook in (`$SHELL -lc`), whose parent is Codex, the
+  hello's `harnessPid`.
+- Not checked: whether Codex shows the model the line where the documentation says, and how its
+  `systemMessage` and `additionalContext` interact with other hooks' output.
+
 ## Process scan (detection only)
 
 `src/harness/procscan.js` (#38). Hooks only reach autochat from agents that have them: sessions
@@ -512,8 +676,8 @@ last ones outlive `opencode run`), never waiting for it and never throwing:
 Subagents work in child sessions (`parentID`) with their own prompts, tools and idle: the plugin
 leaves those out, and passes their permission requests and questions on as their root session's.
 It doesn't forward `message.updated` (several per message; it keeps the agent and the last text
-from them), `session.status`, `session.error` (an idle follows), `tool.execute.after`, or the
-`permission.ask` hook, which 1.2.6 doesn't call.
+from them), `session.status`, `session.error` (an idle follows), or the `permission.ask` hook,
+which 1.2.6 doesn't call. Its `tool.execute.after` rings the doorbell (below).
 
 **Order.** Each event is its own `autochat hook` process, so events milliseconds apart (a tool call
 and the question it asks; `run` rejecting a permission 4 ms after it's asked; idle, then the end)
@@ -557,3 +721,25 @@ wrote to it (its `.autochat.bak`; a backup holding only autochat's entries doesn
 taken of a config that holds nothing else), and `opencode.json` itself when autochat made it and
 nothing else is left. A `timeout` of 60 s keeps `wait` working: 1.2.6 never uses the 5 s its schema
 documents ([agents.md](agents.md#opencode)).
+
+### Doorbell
+
+**Verified live** against opencode 1.2.6: `opencode run` against the local stand-in for an
+OpenAI-compatible API, in a throwaway `HOME`: a probe plugin in the project's `.opencode/plugin/`
+with a stub MCP server first, then autochat's own plugin (`autochat setup --harness opencode`) and
+`autochat mcp`, against a stand-in daemon.
+
+- opencode awaits a plugin's `tool.execute.after(input, output)`, and the model reads what the
+  plugin leaves in `output`. Built-in tools return their text in `output.output`, a string the
+  plugin can append to. MCP tools return MCP content blocks in `output.content`: there,
+  `output.output` changes nothing, and a text block pushed onto `output.content` reaches the model.
+- The plugin rings in-process, with no hook process: after every tool call but autochat's own
+  (`autochat_…`), in root sessions only (a subagent's tool calls don't ring), one connection to
+  autochat's socket, 150 ms at most. It finds the socket as autochat does (`AUTOCHAT_HOME`, else
+  `~/.autochat`).
+- **Which agent.** opencode starts one `autochat mcp` per opencode process and gives it no session
+  id, so the daemon matches the `pid`: the plugin's `process.pid`, the opencode process, which is
+  the MCP server's parent (verified), the hello's `harnessPid`. Every session of one opencode
+  process (a TUI, a server) is the same agent.
+- The plugin is a copy, so an installed one rings only after `autochat setup --harness opencode`
+  rewrites it, and in opencode processes started after that.

@@ -5,7 +5,7 @@ import { copilotHome, sessionEventsPath, sessionDir, cacheDir, ensureDir, isVali
 import { sanitize } from '../protocol.js'
 import { focusOrigin } from '../launcher.js'
 import { harnessContext, readText, planned, scanEvents, pidAlive, shq, psq } from './util.js'
-import { jsonServer, detectBy, child, argsFor } from './mcp-config.js'
+import { jsonServer, detectBy, child, argsFor, SERVER } from './mcp-config.js'
 import { byTrigger, defaultAutonomy, originFrom } from './event.js'
 
 // Copilot CLI. Hooks: $COPILOT_HOME/hooks/autochat.json, a file of our own. Its mode (autopilot,
@@ -179,6 +179,21 @@ export function normalize (event, p, env) {
       break
   }
   return ev
+}
+
+// --- the doorbell -----------------------------------------------------------------------------------
+
+// Verified against Copilot CLI 1.0.102: a command hook that prints {"additionalContext": "…"} for
+// preToolUse gets it to the model as a user message right after that tool's result ("Additional
+// context from preToolUse hook: …"). postToolUse appends it to the result itself, but our
+// postToolUse only runs for task_complete: preToolUse already runs for every tool, so ringing there
+// costs one socket round trip and no extra process. task_complete ends an autopilot run, so a line
+// after it would never be read.
+const ROOM_TOOL = new RegExp(`^${SERVER}-`)
+const doorbell = {
+  event: 'preToolUse',
+  skip: (p) => toolCalls(p).some(c => typeof c.name === 'string' && (ROOM_TOOL.test(c.name) || c.name === 'task_complete')),
+  output: (text) => JSON.stringify({ additionalContext: text })
 }
 
 // --- the session log --------------------------------------------------------------------------------
@@ -407,6 +422,7 @@ const adapter = {
   hookStatus: (ctx) => ({ installed: hooksInstalled(ctx), file: hooksFile(ctx), legacy: legacyHooksInstalled(ctx) ? legacyHooksFile(ctx) : null }),
   normalize,
   autonomy: defaultAutonomy,
+  doorbell,
   // An active autopilot objective keeps a stopped session in the room.
   continues: (session) => objectiveStatus(session.sid) === 'active',
   follow: (sid) => new SessionLog(sid),
