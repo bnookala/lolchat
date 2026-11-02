@@ -353,7 +353,7 @@ test('autochat daemon: the doorbell rings its agents, finds a session by its pro
   fs.mkdirSync(home, { recursive: true })
   fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ room: 'lc1-bell-' + Math.random().toString(36).slice(2, 12), announce: false }))
   process.env.AUTOCHAT_HOME = home
-  const env = { ...process.env, AUTOCHAT_HOME: home, AUTOCHAT_BOOTSTRAP: testnet.bootstrap.map(b => `${b.host}:${b.port}`).join(','), AUTOCHAT_NO_NOTIFY: '1', AUTOCHAT_NO_FOCUS: '1' }
+  const env = { ...process.env, AUTOCHAT_HOME: home, AUTOCHAT_BOOTSTRAP: testnet.bootstrap.map(b => `${b.host}:${b.port}`).join(','), AUTOCHAT_NO_NOTIFY: '1', AUTOCHAT_NO_FOCUS: '1', ...noHarnesses(path.join(tmp, 'b-home')) }
   const daemon = spawn(process.execPath, [BIN, 'daemon'], { env, stdio: ['ignore', 'ignore', 'pipe'] })
   let stderr = ''
   daemon.stderr.on('data', (d) => { stderr += d })

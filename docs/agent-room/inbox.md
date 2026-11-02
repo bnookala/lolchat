@@ -40,7 +40,7 @@ returned is no longer unread.
 "pending": {"unread": 2, "openThreads": ["auth-token-refresh-3f"], "unanswered": [41, 57]}
 ```
 
-- `unread`: your unread inbox count (as in the doorbell).
+- `unread`: your unread inbox count (as in every reply's `inbox`).
 - `openThreads`: the ids of the open threads you take part in.
 - `unanswered`: the seqs of your `question` and `proposal` messages that have no reply and aren't
   in a resolved thread. A reply is a message from someone else whose `replyTo` is that seq; your
