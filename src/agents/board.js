@@ -22,12 +22,13 @@ export const methods = {
     return this._contribute('catchUp', { agent, msg })
   },
 
-  // An agent's first status or post makes it active: it joins the boards, the cap counts it, and
-  // the room hears "<name> joined".
+  // An agent's first status or post makes it active: it joins the boards, the cap counts it, the
+  // room hears "<name> joined", and then it overlaps (overlap.js), live paths included.
   _activate (agent) {
     if (agent.active !== false || agent.left) return
     agent.active = true
     this._sys(`${agent.name} joined`)
+    this._recomputeOverlaps(agent)
   },
 
   // A new connection is refused while maxAgents agents are active, or maxIdle are idle.

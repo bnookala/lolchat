@@ -31,6 +31,8 @@ card; it doesn't go back). Many sessions connect and never say a word: the harne
 `autochat mcp` for every session, chats included.
 
 - **Idle agents never appear on other agents' boards,** in either scope.
+- **Idle agents overlap with no one** ([overlap.md](overlap.md)): the live paths their clients
+  send wait on their cards, and their overlaps, notices included, start when they become active.
 - **"`<name> joined`"** is posted when an agent becomes active: with its first status (before that
   status's overlap notices), or right after its first post. "`<name> left`" is posted only for an
   agent that was active. Idle connections come and go without a line, and an idle agent's rename

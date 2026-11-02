@@ -115,7 +115,7 @@ test('paths: at most one every 2 s, the latest waits for the gap; the 5 s status
   await until(() => cardOf(room, a.name).focus.live[0] === 'd.js', 'the latest paths')
   await sleep(150)
   assert.deepEqual(cardOf(room, a.name).focus.live, ['d.js'], 'only the latest applies, once')
-  assert.equal((await a.cmd('status', { summary: 'too soon' })).error, 'rate limited', 'status keeps its own rule')
+  assert.equal(ok(await a.cmd('status', { summary: 'too soon' })).deferred, true, 'status keeps its own rule (deferred, #57)')
   a.close()
 })
 
@@ -124,6 +124,8 @@ test('live paths overlap: notices between two agents without any status, with fo
   const a = await agent({ harness: 'copilot' })
   const b = await agent({ harness: 'claude' })
   const other = await agent({ harness: 'gemini', repo: 'owner/elsewhere' })
+  // Only active agents overlap (#67): each says hello first, and still sets no status.
+  for (const x of [a, b, other]) ok(await x.cmd('post', { text: 'hello' }))
   ok(await other.cmd('paths', { paths: ['src/greeting.js'] }))
   assert.deepEqual(ok(await a.cmd('paths', { paths: ['src/greeting.js', 'README.md'] })), { overlaps: [] })
   const r = ok(await b.cmd('paths', { paths: ['src/greeting.js'] }))
@@ -156,6 +158,7 @@ test('live paths and presence: an away agent keeps its overlaps (and its paths o
   const { room } = await start(t, { limits: { pathsGapMs: 0, resumeMs: 300 } })
   const a = await agent({ harness: 'copilot' })
   const b = await agent({ harness: 'claude' })
+  for (const x of [a, b]) ok(await x.cmd('post', { text: 'hello' })) // active (#67)
   ok(await a.cmd('paths', { paths: ['src/x.js'] }))
   assert.equal(ok(await b.cmd('paths', { paths: ['src/x.js'] })).overlaps.length, 1)
   a.close()
@@ -215,7 +218,7 @@ test('status returns knownComponents: the other cards\' components for your repo
   clock += 10
   let r = ok(await a.cmd('status', { focus: { components: ['Greetings', 'i18n'] } }))
   assert.deepEqual(r.knownComponents, [], 'only other cards, only your repo')
-  assert.deepEqual(Object.keys(r), ['card', 'overlaps', 'knownComponents'])
+  assert.deepEqual(Object.keys(r), ['card', 'overlaps', 'knownComponents', 'pending'])
   clock += 10
   r = ok(await b.cmd('status', { focus: { components: ['greeting', 'cli'] } }))
   assert.deepEqual(r.knownComponents, ['Greetings', 'i18n'])
@@ -253,4 +256,24 @@ test('the agents snapshot stays under 256 KiB: long focus.live lists are shorten
   assert.ok(Buffer.byteLength(JSON.stringify(out)) <= MAX)
   assert.equal(out.agents.length, 20, 'every card stays')
   assert.ok(out.agents.every(c => c.focus.live.length < 200 && c.focus.live[0] === agents.find(a => a.name === c.name).focus.live[0]))
+})
+
+test('idle agents overlap with no one: their live paths wait on their card until a first post or status, after "joined"', async (t) => {
+  const { room } = await start(t, { limits: { pathsGapMs: 0 } })
+  const a = await agent({ harness: 'copilot' })
+  const b = await agent({ harness: 'claude' })
+  ok(await a.cmd('status', { state: 'editing' }))
+  ok(await a.cmd('paths', { paths: ['src/greeting.js'] }))
+  // b is idle (#67): its paths are on its card, and nobody overlaps it, nor hears about it.
+  assert.deepEqual(ok(await b.cmd('paths', { paths: ['src/greeting.js'] })).overlaps, [])
+  assert.deepEqual(cardOf(room, 'claude-repo').focus.live, ['src/greeting.js'])
+  assert.deepEqual([cardOf(room, 'claude-repo').overlaps, cardOf(room, 'copilot-repo').overlaps], [[], []])
+  assert.deepEqual(notices(room), [])
+  // Its first post makes it active: "joined", then the overlap its live paths had all along.
+  ok(await b.cmd('post', { text: 'picking up the greeting' }))
+  const text = 'claude-repo and copilot-repo both touch src/greeting.js'
+  assert.deepEqual(room.snapshot().messages.slice(-3).map(m => m.text), ['picking up the greeting', 'claude-repo joined', text])
+  assert.deepEqual(cardOf(room, 'copilot-repo').overlaps, ['claude-repo'])
+  a.close()
+  b.close()
 })

@@ -23,6 +23,11 @@ overlap clears and comes back. Overlaps are recomputed when either card changes 
 `paths`). An away agent keeps its overlaps, since it may resume; an agent that left overlaps with
 no one, and the other cards drop their overlaps with it.
 
+Only active agents overlap ([board.md](board.md#active-and-idle-agents)). An idle agent's `paths`
+still set its `focus.live`, but it overlaps with no one, so it neither gets nor causes a notice,
+until its first `status` or post makes it active. Its overlaps are computed then, live paths
+included, right after its "`<name> joined`" line.
+
 ### Live paths: `paths`
 
 ```jsonc

@@ -507,10 +507,13 @@ test('live paths: two autochat mcp processes overlap from git alone, without a s
     if (!pong) await sleep(100)
   }
   assert.equal(pong?.agentRoom, true)
-  const A = mcpProcess(one, 'copilot', env)
-  const B = mcpProcess(two, 'claude', env)
+  // Named as before #66 (from their titles, both would be greeting-main).
+  const A = mcpProcess(one, 'copilot', { ...env, AUTOCHAT_AGENT_NAME: 'copilot-greeting' })
+  const B = mcpProcess(two, 'claude', { ...env, AUTOCHAT_AGENT_NAME: 'claude-greeting' })
   t.after(() => { A.child.kill('SIGKILL'); B.child.kill('SIGKILL') })
   for (const X of [A, B]) await X.request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'live', version: '1' } })
+  // Only active agents overlap (#67): each says hello, and neither sets a status.
+  for (const X of [A, B]) await X.tool('post', { text: 'hello' })
   const until = async (fn, label) => {
     for (let i = 0; i < 100; i++) { if (await fn()) return; await sleep(100) }
     assert.fail('timed out waiting for ' + label)

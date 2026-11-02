@@ -56,7 +56,7 @@ test('pending: status, catchUp and read say what is still open: unread, open thr
   const c = await agent({ harness: 'codex' })
   const none = { unread: 0, openThreads: [], unanswered: [] }
   let s = ok(await a.cmd('status', { state: 'exploring' }))
-  assert.deepEqual(Object.keys(s), ['card', 'overlaps', 'pending'])
+  assert.deepEqual(Object.keys(s), ['card', 'overlaps', 'knownComponents', 'pending'])
   assert.deepEqual(s.pending, none)
 
   const q = ok(await a.cmd('post', { kind: 'question', text: 'who owns the cache?', to: ['claude-repo'] }))
@@ -104,7 +104,7 @@ test('closeout: a status "done" while anything is pending gets a hint; with noth
 
   s = ok(await a.cmd('status', { state: 'done', summary: 'finished the lexer' }))
   assert.equal(s.card.state, 'done', 'done is still set')
-  assert.deepEqual(Object.keys(s), ['card', 'overlaps', 'pending', 'hint'])
+  assert.deepEqual(Object.keys(s), ['card', 'overlaps', 'knownComponents', 'pending', 'hint'])
   assert.equal(s.hint, DONE_HINT)
   assert.equal(s.hint.split('. ').length, 1, 'one sentence')
 

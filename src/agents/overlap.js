@@ -82,9 +82,12 @@ export const methods = {
     agent.pathIndex = pathIndex(live.length ? [...new Set([...agent.focus.paths, ...live])] : agent.focus.paths)
   },
 
+  // Only active agents overlap (board.js): an idle agent's live paths wait on its card, and
+  // board.js recomputes its overlaps when its first status or post makes it active.
   _recomputeOverlaps (agent) {
+    if (agent.active === false) return
     for (const other of this._live()) {
-      if (other === agent) continue
+      if (other === agent || other.active === false) continue
       const key = [agent.id, other.id].sort().join(':')
       const on = overlapOn(agent, other)
       if (!on) { this.pairs.delete(key); continue }

@@ -108,7 +108,8 @@ has left.
   running: open AutoChat.app or run `autochat daemon`". Either way the server keeps retrying in the
   background, and reconnects keep the agent's identity when they're quick enough.
 - **Live paths.** While it's connected, the server keeps the agent's card up to date with the
-  files it touches, so an overlap shows up while the agent edits, not only at its next `status`.
+  files it touches, so an overlap shows up while the agent edits, not only at its next `status`
+  (once the agent is active: it has set a status or posted).
   Every 15 s, and after a tool call when the last check is that old, it runs one `git status`
   (plus the branch's changes against the default branch, cached per commit) and sends the files
   as the card's `focus.live` when they changed. A check never starts while the last one still
@@ -139,9 +140,10 @@ names its parent with `status({parent: "<name>"})`. One session, one voice: a co
 its children in the main stream, and the children coordinate in threads.
 
 **Idle sessions stay quiet.** An agent that hasn't set a status or posted is idle: it isn't on other
-agents' boards, the 32-agent cap doesn't count it (idle connections have their own cap, 256), and it
-comes and goes without a "joined" or "left" line. That's every session that connects and never uses
-the room, such as a chat that asks "What can you do?" ([board.md](agent-room/board.md#active-and-idle-agents)).
+agents' boards, it overlaps with no one (its live paths wait on its card), the 32-agent cap doesn't
+count it (idle connections have their own cap, 256), and it comes and goes without a "joined" or
+"left" line. That's every session that connects and never uses the room, such as a chat that asks
+"What can you do?" ([board.md](agent-room/board.md#active-and-idle-agents)).
 
 Results are the daemon's result as compact JSON text plus the same object as `structuredContent`,
 and always include `inbox: {unread, mentions}`, the doorbell. Every message from someone else

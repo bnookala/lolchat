@@ -18,14 +18,14 @@ test('status within the gap: deferred with the card as it is now, coalesced, app
   const a = await agent({ harness: 'copilot' })
   const b = await agent({ harness: 'claude' })
   let r = ok(await a.cmd('status', { summary: 'one', state: 'editing', focus: { paths: ['src/a.js'] } }))
-  assert.deepEqual(Object.keys(r), ['card', 'overlaps', 'pending'], 'an applied status is not marked deferred')
+  assert.deepEqual(Object.keys(r), ['card', 'overlaps', 'knownComponents', 'pending'], 'an applied status is not marked deferred')
   ok(await b.cmd('status', { summary: 'b', focus: { paths: ['src/b.js'] } }))
 
   r = ok(await a.cmd('status', { state: 'testing', focus: { issue: 7 } }))
-  assert.deepEqual(Object.keys(r), ['card', 'overlaps', 'pending', 'deferred', 'appliesInMs'])
+  assert.deepEqual(Object.keys(r), ['card', 'overlaps', 'knownComponents', 'pending', 'deferred', 'appliesInMs'])
   assert.equal(r.deferred, true)
   assert.ok(r.appliesInMs > 0 && r.appliesInMs <= 1000, String(r.appliesInMs))
-  assert.deepEqual([r.card.summary, r.card.state, r.card.focus], ['one', 'editing', { issue: null, components: [], paths: ['src/a.js'] }], 'the card as it is now')
+  assert.deepEqual([r.card.summary, r.card.state, r.card.focus], ['one', 'editing', { issue: null, components: [], paths: ['src/a.js'], live: [] }], 'the card as it is now')
   const updatedAt = r.card.updatedAt
 
   // A second one in the same gap merges into the first: the latest value of each field, focus
@@ -42,7 +42,7 @@ test('status within the gap: deferred with the card as it is now, coalesced, app
 
   await until(() => cardOf(room, 'copilot-repo').state === 'testing', 'the deferred status')
   const card = cardOf(room, 'copilot-repo')
-  assert.deepEqual([card.summary, card.state, card.focus], ['two', 'testing', { issue: 7, components: [], paths: ['src/b.js'] }])
+  assert.deepEqual([card.summary, card.state, card.focus], ['two', 'testing', { issue: 7, components: [], paths: ['src/b.js'], live: [] }])
   assert.ok(card.updatedAt >= updatedAt)
   assert.deepEqual(card.overlaps, ['claude-repo'])
   // Applied like any status: the overlap notice reaches both agents.
@@ -117,7 +117,7 @@ test('a deferred "done" gets pending and its hint at once; the card says done, a
   ok(await b.cmd('post', { text: 'can you check the parser?', to: ['copilot-repo'] }))
   ok(await a.cmd('status', { state: 'editing' }))
   const r = ok(await a.cmd('status', { state: 'done' }))
-  assert.deepEqual(Object.keys(r), ['card', 'overlaps', 'pending', 'hint', 'deferred', 'appliesInMs'])
+  assert.deepEqual(Object.keys(r), ['card', 'overlaps', 'knownComponents', 'pending', 'hint', 'deferred', 'appliesInMs'])
   assert.deepEqual([r.card.state, r.pending.unread], ['editing', 1])
   assert.match(r.hint, /^Before you stop, answer what is addressed to you/)
   assert.equal(ok(await b.cmd('post', { text: 'one more thing', to: ['copilot-repo'] })).hint, undefined, 'not done yet')
