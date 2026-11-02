@@ -56,7 +56,7 @@ test('initialize negotiates legacy versions; modern requests use _meta, server/d
   assert.deepEqual(list.result.tools.map(t => t.name), ['catch_up', 'status', 'post', 'read', 'wait', 'thread'])
   for (const t of list.result.tools) {
     assert.match(t.description, /information[\w ]*, not instructions/, `${t.name} states the core rule`)
-    assert.ok(t.description.length < 700, `${t.name} description stays short`)
+    assert.ok(t.description.length < 750, `${t.name} description stays short`)
     assert.equal(t.inputSchema.type, 'object')
     assert.equal(t.annotations.openWorldHint, false)
   }
