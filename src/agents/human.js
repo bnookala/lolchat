@@ -39,7 +39,7 @@ export const methods = {
       openThreads: open,
       connected: [...this.harnessPlan.connected],
       available: [...this.harnessPlan.available],
-      // board.js (#67) sets agent.active; until it does, every agent counts.
+      // Present agents that have set a status or posted (agent.active, board.js).
       active: here.filter(a => a.active !== false).length
     }
   },

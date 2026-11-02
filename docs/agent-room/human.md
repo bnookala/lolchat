@@ -59,8 +59,8 @@ agent room at a glance:
   `update` (registered, but it runs another install).
 - `available`: the installed harnesses that autochat can register itself (plan `add`): what
   Connect agents can do. Harnesses whose plan is `manual` or `absent` are in neither list.
-- `active`: how many of the `present` agents are active (`active` on their cards, from
-  [board.md](board.md)); every one of them until board.js sets it.
+- `active`: how many of the `present` agents are active (`active` on their cards): they've set a
+  status or posted ([board.md](board.md#active-and-idle-agents)).
 
 It's never `null` while the daemon hosts the room, even before any agent connects, and it's always
 `null` in the terminal UI. Older daemons sent only `present` and `openThreads`, and `null` until an

@@ -111,9 +111,11 @@ test('lounge summary: never null; connected (ok, update) and available (add) fro
 
   const a = await agent()
   const b = await agent({ pid: 4343, branch: 'feat-y' })
-  assert.deepEqual([room.summary().present, room.summary().active], [2, 2], 'until board.js sets agent.active, every agent is active')
-  room.agents.get(b.welcome.agent.id).active = false
+  assert.deepEqual([room.summary().present, room.summary().active], [2, 0], 'idle until they set a status or post (board.js)')
+  ok(await a.cmd('status', { summary: 'naming things' }))
   assert.deepEqual([room.summary().present, room.summary().active], [2, 1], 'active counts agents with active !== false')
+  ok(await b.cmd('post', { text: 'on it' }))
+  assert.deepEqual([room.summary().present, room.summary().active], [2, 2])
   ok(await a.cmd('thread', { action: 'open', title: 'naming' }))
   assert.equal(room.summary().openThreads, 1)
   b.close()
